@@ -109,9 +109,11 @@ struct ArchiveView: View {
     @State private var uploadMode: UploadMode = .album
     @State private var showAlbumPicker = false
     @State private var showPhotoPicker = false
+    @State private var showVideoPicker = false
+    @State private var showDocumentPicker = false
     
     enum UploadMode {
-        case album, photos
+        case album, photos, videos, documents
     }
 
     enum ArchiveProvider: String, CaseIterable {
@@ -483,6 +485,17 @@ struct ArchiveView: View {
                 .environmentObject(googleDrive)
                 .environmentObject(auth)
         }
+        .sheet(isPresented: $showVideoPicker) {
+            VideoPickerView()
+                .environmentObject(photoManager)
+                .environmentObject(googleDrive)
+                .environmentObject(auth)
+        }
+        .sheet(isPresented: $showDocumentPicker) {
+            DocumentPickerView()
+                .environmentObject(googleDrive)
+                .environmentObject(auth)
+        }
     }
 
     private var googleDriveStatusCard: some View {
@@ -599,22 +612,42 @@ struct ArchiveView: View {
                 .foregroundColor(.white.opacity(0.8))
                 .padding(.horizontal, 4)
             
-            HStack(spacing: 10) {
-                modeButton(
-                    icon: "photo.on.rectangle.angled",
-                    title: "앨범",
-                    subtitle: "앨범 선택",
-                    mode: .album,
-                    isSelected: uploadMode == .album
-                )
+            VStack(spacing: 10) {
+                HStack(spacing: 10) {
+                    modeButton(
+                        icon: "photo.on.rectangle.angled",
+                        title: "앨범",
+                        subtitle: "앨범 선택",
+                        mode: .album,
+                        isSelected: uploadMode == .album
+                    )
+                    
+                    modeButton(
+                        icon: "photo.stack",
+                        title: "사진",
+                        subtitle: "개별 선택",
+                        mode: .photos,
+                        isSelected: uploadMode == .photos
+                    )
+                }
                 
-                modeButton(
-                    icon: "photo.stack",
-                    title: "사진",
-                    subtitle: "개별 선택",
-                    mode: .photos,
-                    isSelected: uploadMode == .photos
-                )
+                HStack(spacing: 10) {
+                    modeButton(
+                        icon: "video.fill",
+                        title: "영상",
+                        subtitle: "영상 선택",
+                        mode: .videos,
+                        isSelected: uploadMode == .videos
+                    )
+                    
+                    modeButton(
+                        icon: "doc.fill",
+                        title: "문서",
+                        subtitle: "문서 선택",
+                        mode: .documents,
+                        isSelected: uploadMode == .documents
+                    )
+                }
             }
         }
         .padding(16)
@@ -665,6 +698,10 @@ struct ArchiveView: View {
                 albumUploadSection
             case .photos:
                 photosUploadSection
+            case .videos:
+                videosUploadSection
+            case .documents:
+                documentsUploadSection
             }
         }
         .padding(18)
@@ -766,6 +803,114 @@ struct ArchiveView: View {
                     Image(systemName: "photo.stack")
                         .font(.system(size: 14, weight: .semibold))
                     Text("사진 선택하기")
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 13)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(AppTheme.gracefulGold)
+                )
+                .shadow(color: AppTheme.gracefulGold.opacity(0.4), radius: 8, x: 0, y: 4)
+            }
+        }
+    }
+    
+    private var videosUploadSection: some View {
+        let theme = AppTheme.UploadModeTheme.photos
+        
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "video.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(AppTheme.gracefulGold)
+                Text("영상 선택 업로드")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+            }
+            
+            Text("영상 파일을 선택하여 업로드합니다. MP4, MOV 등의 영상 파일을 지원합니다.")
+                .font(.system(size: 13))
+                .foregroundColor(AppTheme.gracefulGold.opacity(0.7))
+                .lineSpacing(3)
+            
+            VStack(alignment: .leading, spacing: 6) {
+                infoRow(icon: "folder", text: "폴더: ZAKAR/\(auth.currentUser?.department ?? "부서")/2026/\(auth.currentUser?.department ?? "부서")_날짜_이벤트명/")
+                infoRow(icon: "doc.text", text: "파일: 원본명.mp4")
+            }
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(theme.accentColor.opacity(0.06))
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(theme.accentColor.opacity(0.2), lineWidth: 0.5)
+            )
+            
+            Button {
+                showVideoPicker = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "video.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("영상 선택하기")
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 13)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(AppTheme.gracefulGold)
+                )
+                .shadow(color: AppTheme.gracefulGold.opacity(0.4), radius: 8, x: 0, y: 4)
+            }
+        }
+    }
+    
+    private var documentsUploadSection: some View {
+        let theme = AppTheme.UploadModeTheme.photos
+        
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "doc.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(AppTheme.gracefulGold)
+                Text("문서 선택 업로드")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+            }
+            
+            Text("문서 파일을 선택하여 업로드합니다. PDF, Word, Excel, PowerPoint 등을 지원합니다.")
+                .font(.system(size: 13))
+                .foregroundColor(AppTheme.gracefulGold.opacity(0.7))
+                .lineSpacing(3)
+            
+            VStack(alignment: .leading, spacing: 6) {
+                infoRow(icon: "folder", text: "폴더: ZAKAR/\(auth.currentUser?.department ?? "부서")/2026/\(auth.currentUser?.department ?? "부서")_날짜_이벤트명/")
+                infoRow(icon: "doc.text", text: "파일: 원본명.pdf")
+            }
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(theme.accentColor.opacity(0.06))
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(theme.accentColor.opacity(0.2), lineWidth: 0.5)
+            )
+            
+            Button {
+                showDocumentPicker = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "doc.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("문서 선택하기")
                         .font(.system(size: 15, weight: .semibold))
                 }
                 .foregroundColor(.white)
