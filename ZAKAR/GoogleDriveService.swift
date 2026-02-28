@@ -551,9 +551,27 @@ final class GoogleDriveService: ZKDriveSyncing, ObservableObject {
     private func mimeType(forExtension ext: String) -> String {
         let lower = ext.lowercased()
         switch lower {
+        // 이미지
         case "jpg", "jpeg": return "image/jpeg"
         case "png": return "image/png"
         case "heic": return "image/heic"
+        case "gif": return "image/gif"
+        case "webp": return "image/webp"
+        // 영상
+        case "mp4": return "video/mp4"
+        case "mov": return "video/quicktime"
+        case "m4v": return "video/x-m4v"
+        case "avi": return "video/x-msvideo"
+        case "mkv": return "video/x-matroska"
+        // 문서
+        case "pdf": return "application/pdf"
+        case "doc": return "application/msword"
+        case "docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        case "xls": return "application/vnd.ms-excel"
+        case "xlsx": return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        case "ppt": return "application/vnd.ms-powerpoint"
+        case "pptx": return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        case "txt": return "text/plain"
         default: return "application/octet-stream"
         }
     }

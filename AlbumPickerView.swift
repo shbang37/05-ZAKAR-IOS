@@ -17,13 +17,9 @@ struct AlbumPickerView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                // 배경 그라디언트
-                LinearGradient(
-                    colors: [Color.black, Color(red: 0.06, green: 0.07, blue: 0.11)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
+                // 배경 (은혜의교회 퍼플)
+                AppTheme.mainPurple
+                    .ignoresSafeArea()
                 
                 ScrollView {
                         VStack(spacing: 16) {
@@ -72,7 +68,7 @@ struct AlbumPickerView: View {
             HStack {
                 Image(systemName: "info.circle.fill")
                     .font(.system(size: 14))
-                    .foregroundColor(.blue.opacity(0.8))
+                    .foregroundColor(AppTheme.gracefulGold.opacity(0.8))
                 Text("업로드 방식")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.white.opacity(0.8))
@@ -179,12 +175,8 @@ struct AlbumPickerView: View {
     private func albumDetailView(album: AlbumInfo) -> some View {
         NavigationView {
             ZStack {
-                LinearGradient(
-                    colors: [Color.black, Color(red: 0.06, green: 0.07, blue: 0.11)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
+                AppTheme.mainPurple
+                    .ignoresSafeArea()
                 
                 ScrollView {
                     VStack(spacing: 20) {
@@ -234,7 +226,7 @@ struct AlbumPickerView: View {
             HStack {
                 Image(systemName: "photo.on.rectangle.angled")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.purple.opacity(0.9))
+                    .foregroundColor(AppTheme.gracefulGold.opacity(0.9))
                 Text("선택된 앨범")
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
@@ -262,7 +254,7 @@ struct AlbumPickerView: View {
             HStack {
                 Image(systemName: "pencil")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.blue.opacity(0.9))
+                    .foregroundColor(AppTheme.gracefulGold.opacity(0.9))
                 Text("이벤트명")
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
@@ -294,7 +286,7 @@ struct AlbumPickerView: View {
             HStack {
                 Image(systemName: "folder.badge.gearshape")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.green.opacity(0.9))
+                    .foregroundColor(AppTheme.gracefulGold.opacity(0.9))
                 Text("업로드 경로 미리보기")
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
@@ -340,15 +332,9 @@ struct AlbumPickerView: View {
             .foregroundColor(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
-            .background(
-                LinearGradient(
-                    colors: [Color.purple, Color.blue],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            )
+            .background(AppTheme.gracefulGold)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .shadow(color: .purple.opacity(0.3), radius: 10, y: 4)
+            .shadow(color: AppTheme.gracefulGold.opacity(0.3), radius: 10, y: 4)
         }
         .disabled(eventName.isEmpty)
         .opacity(eventName.isEmpty ? 0.5 : 1)
@@ -370,11 +356,7 @@ struct AlbumPickerView: View {
                 Circle()
                     .trim(from: 0, to: uploadProgress)
                     .stroke(
-                        LinearGradient(
-                            colors: [Color.purple, Color.blue],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
+                        AppTheme.gracefulGold,
                         style: StrokeStyle(lineWidth: 12, lineCap: .round)
                     )
                     .frame(width: 140, height: 140)

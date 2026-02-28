@@ -11,13 +11,9 @@ struct OnboardingView: View {
 
     var body: some View {
         ZStack {
-            // 배경
-            LinearGradient(
-                colors: [Color.black, Color(red: 0.06, green: 0.07, blue: 0.12)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            // 배경 (은혜의교회 퍼플)
+            AppTheme.mainPurple
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // 페이지 콘텐츠

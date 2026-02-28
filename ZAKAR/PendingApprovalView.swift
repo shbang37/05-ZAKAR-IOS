@@ -8,11 +8,8 @@ struct PendingApprovalView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [Color.black, Color(red: 0.06, green: 0.07, blue: 0.12)],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            AppTheme.mainPurple
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 Spacer()
@@ -20,7 +17,7 @@ struct PendingApprovalView: View {
                 // 아이콘 (맥박 애니메이션)
                 ZStack {
                     Circle()
-                        .stroke(Color.orange.opacity(0.15), lineWidth: 1)
+                        .stroke(AppTheme.gracefulGold.opacity(0.15), lineWidth: 1)
                         .frame(width: 130, height: 130)
                         .scaleEffect(pulseScale)
                         .opacity(2.0 - pulseScale)
@@ -28,12 +25,12 @@ struct PendingApprovalView: View {
                     Circle()
                         .fill(.ultraThinMaterial)
                         .frame(width: 96, height: 96)
-                        .overlay(Circle().stroke(Color.orange.opacity(0.4), lineWidth: 1.5))
-                        .shadow(color: .orange.opacity(0.15), radius: 16)
+                        .overlay(Circle().stroke(AppTheme.gracefulGold.opacity(0.4), lineWidth: 1.5))
+                        .shadow(color: AppTheme.gracefulGold.opacity(0.15), radius: 16)
 
                     Image(systemName: "clock.badge")
                         .font(.system(size: 38, weight: .semibold))
-                        .foregroundColor(.orange)
+                        .foregroundColor(AppTheme.gracefulGold)
                 }
                 .scaleEffect(appear ? 1 : 0.7)
                 .opacity(appear ? 1 : 0)
@@ -126,10 +123,10 @@ struct PendingApprovalView: View {
             Spacer()
             Text(user.role.displayName)
                 .font(.system(size: 11, weight: .bold))
-                .foregroundColor(.orange.opacity(0.9))
+                .foregroundColor(AppTheme.gracefulGold.opacity(0.9))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .background(Color.orange.opacity(0.15))
+                .background(AppTheme.gracefulGold.opacity(0.15))
                 .clipShape(Capsule())
         }
         .padding(16)
@@ -156,7 +153,7 @@ struct PendingApprovalView: View {
         HStack(spacing: 12) {
             ZStack {
                 Circle()
-                    .fill(done ? Color.green.opacity(0.8) : (isActive ? Color.orange.opacity(0.7) : Color.white.opacity(0.1)))
+                    .fill(done ? Color.green.opacity(0.8) : (isActive ? AppTheme.gracefulGold.opacity(0.7) : Color.white.opacity(0.1)))
                     .frame(width: 24, height: 24)
                 if done {
                     Image(systemName: "checkmark")
@@ -188,11 +185,8 @@ struct RejectedView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [Color.black, Color(red: 0.1, green: 0.05, blue: 0.05)],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            AppTheme.mainPurple
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 Spacer()

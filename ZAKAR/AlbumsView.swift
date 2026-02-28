@@ -152,6 +152,10 @@ struct AlbumsView: View {
 struct AlbumDetailView: View {
     let collection: PHAssetCollection
     @State private var assets: [PHAsset] = []
+    @EnvironmentObject var photoManager: PhotoManager
+    @State private var isCleanModeActive = false
+    @State private var selectedPhotoIndex = 0
+    @State private var trashAssets: [PHAsset] = []
 
     private let grid = [GridItem(.adaptive(minimum: 100), spacing: 2)]
 
@@ -164,6 +168,10 @@ struct AlbumDetailView: View {
                     ForEach(assets.indices, id: \.self) { index in
                         AssetThumbnail(asset: assets[index], size: 120)
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .onTapGesture {
+                                selectedPhotoIndex = index
+                                isCleanModeActive = true
+                            }
                     }
                 }
                 .padding(8)
@@ -171,6 +179,15 @@ struct AlbumDetailView: View {
         }
         .navigationTitle(collection.localizedTitle ?? "앨범")
         .onAppear { fetchAssets() }
+        .fullScreenCover(isPresented: $isCleanModeActive) {
+            CleanUpView(
+                photos: assets,
+                startIndex: selectedPhotoIndex,
+                isPresented: $isCleanModeActive,
+                trashAlbum: $trashAssets,
+                photoManager: photoManager
+            )
+        }
     }
 
     private func fetchAssets() {

@@ -22,13 +22,9 @@ struct PhotoSelectionView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                // 배경 그라디언트
-                LinearGradient(
-                    colors: [Color.black, Color(red: 0.06, green: 0.07, blue: 0.11)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
+                // 배경 (은혜의교회 퍼플)
+                AppTheme.mainPurple
+                    .ignoresSafeArea()
                 
                 VStack(spacing: 0) {
                         // 상단 안내 및 선택 카운트
@@ -70,7 +66,7 @@ struct PhotoSelectionView: View {
                         } label: {
                             Text("다음")
                                 .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.blue)
+                                .foregroundColor(AppTheme.gracefulGold)
                         }
                     }
                 }
@@ -92,7 +88,7 @@ struct PhotoSelectionView: View {
             HStack {
                 Image(systemName: "info.circle.fill")
                     .font(.system(size: 13))
-                    .foregroundColor(.blue.opacity(0.8))
+                    .foregroundColor(AppTheme.gracefulGold.opacity(0.8))
                 Text("업로드할 사진을 선택하세요")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(.white.opacity(0.7))
@@ -124,7 +120,7 @@ struct PhotoSelectionView: View {
                     } label: {
                         Text(selectedAssets.count == photoManager.allPhotos.count ? "전체 해제" : "전체 선택")
                             .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.blue)
+                            .foregroundColor(AppTheme.gracefulGold)
                     }
                 }
             }
@@ -164,12 +160,12 @@ struct PhotoSelectionView: View {
                 
                 // 선택 오버레이
                 if isSelected {
-                    Color.blue.opacity(0.3)
+                    AppTheme.gracefulGold.opacity(0.3)
                     
                     // 체크마크
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 24))
-                        .foregroundColor(.blue)
+                        .foregroundColor(AppTheme.gracefulGold)
                         .background(
                             Circle()
                                 .fill(Color.white)
@@ -207,12 +203,8 @@ struct PhotoSelectionView: View {
     private var uploadConfirmationView: some View {
         NavigationView {
             ZStack {
-                LinearGradient(
-                    colors: [Color.black, Color(red: 0.06, green: 0.07, blue: 0.11)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
+                AppTheme.mainPurple
+                    .ignoresSafeArea()
                 
                 ScrollView {
                     VStack(spacing: 20) {
@@ -278,7 +270,7 @@ struct PhotoSelectionView: View {
             HStack {
                 Image(systemName: "pencil")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.blue.opacity(0.9))
+                    .foregroundColor(AppTheme.gracefulGold.opacity(0.9))
                 Text("이벤트명")
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
@@ -360,15 +352,9 @@ struct PhotoSelectionView: View {
             .foregroundColor(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
-            .background(
-                LinearGradient(
-                    colors: [Color.green, Color.blue],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            )
+            .background(AppTheme.gracefulGold)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .shadow(color: .green.opacity(0.3), radius: 10, y: 4)
+            .shadow(color: AppTheme.gracefulGold.opacity(0.3), radius: 10, y: 4)
         }
         .disabled(eventName.isEmpty)
         .opacity(eventName.isEmpty ? 0.5 : 1)
@@ -390,11 +376,7 @@ struct PhotoSelectionView: View {
                 Circle()
                     .trim(from: 0, to: uploadProgress)
                     .stroke(
-                        LinearGradient(
-                            colors: [Color.green, Color.blue],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
+                        AppTheme.gracefulGold,
                         style: StrokeStyle(lineWidth: 12, lineCap: .round)
                     )
                     .frame(width: 140, height: 140)

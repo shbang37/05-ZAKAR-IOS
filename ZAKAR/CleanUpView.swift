@@ -404,16 +404,16 @@ struct CleanUpView: View {
         
         print("ZAKAR Log: loadImgWithPreview - Requesting image for index \(index)")
 
-        // 1단계: 빠른 저해상도 썸네일 (즉시 표시용, ~400px)
+        // 1단계: 고품질 프리뷰 (즉시 표시용)
         let previewOptions = PHImageRequestOptions()
-        previewOptions.deliveryMode = .fastFormat
+        previewOptions.deliveryMode = .opportunistic  // 빠르지만 품질 좋은 이미지
         previewOptions.isNetworkAccessAllowed = true
         previewOptions.isSynchronous = false
-        previewOptions.resizeMode = .fast  // 빠른 리사이징
+        previewOptions.resizeMode = .exact  // 정확한 리사이징으로 품질 향상
 
         PHImageManager.default().requestImage(
             for: asset,
-            targetSize: CGSize(width: 400, height: 400),
+            targetSize: CGSize(width: 340 * displayScale, height: 500 * displayScale),  // 표시 크기에 맞춤
             contentMode: .aspectFit,
             options: previewOptions
         ) { img, info in
@@ -441,7 +441,7 @@ struct CleanUpView: View {
         hqOptions.deliveryMode = .highQualityFormat  // opportunistic → highQualityFormat
         hqOptions.isNetworkAccessAllowed = true
         hqOptions.isSynchronous = false
-        hqOptions.resizeMode = .fast
+        hqOptions.resizeMode = .exact  // 정확한 리사이징으로 품질 향상
 
         // 카드 크기에 맞는 적절한 해상도 (전체 화면 원본 불필요)
         let scale = displayScale
@@ -476,7 +476,8 @@ struct CleanUpView: View {
         for i in targets where photos.indices.contains(i) && imageCache[i] == nil {
             let asset = photos[i]
             let opts = PHImageRequestOptions()
-            opts.deliveryMode = .fastFormat
+            opts.deliveryMode = .opportunistic  // 품질 향상
+            opts.resizeMode = .exact  // 정확한 리사이징
             opts.isNetworkAccessAllowed = true
             opts.isSynchronous = false
             PHImageManager.default().requestImage(
