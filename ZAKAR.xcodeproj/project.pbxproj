@@ -3,51 +3,133 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 90;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		70292CB92F458670000432B6 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 70292CB82F458670000432B6 /* FirebaseAuth */; };
+		70292CBB2F458680000432B6 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 70292CBA2F458680000432B6 /* FirebaseFirestore */; };
+		70292CBD2F45868A000432B6 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 70292CBC2F45868A000432B6 /* FirebaseCore */; };
+		7073665C2F433EA900AED26A /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 7073665B2F433EA900AED26A /* FirebaseAuth */; };
+		7073665E2F433EA900AED26A /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 7073665D2F433EA900AED26A /* FirebaseFirestore */; };
+		708856E02F4940AA00ED500B /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 708856DF2F4940AA00ED500B /* AppTheme.swift */; };
+		70DAA50E2F484DFC002BF661 /* AlbumPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70DAA50D2F484DFC002BF661 /* AlbumPickerView.swift */; };
+		70DAA5102F484E92002BF661 /* PhotoSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70DAA50F2F484E92002BF661 /* PhotoSelectionView.swift */; };
+		70F1900E2F3EF1FA009F4732 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70F1900D2F3EF1FA009F4732 /* OnboardingView.swift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
-		70EA55FB2F39DC1B005866CB /* ZAKAR.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ZAKAR.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		707366652F433FA000AED26A /* ZAKARAdmin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ZAKARAdmin.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		70818D572F40AD51000F7F58 /* ZAKAR.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ZAKAR.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		708856DF2F4940AA00ED500B /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
+		70DAA50D2F484DFC002BF661 /* AlbumPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumPickerView.swift; sourceTree = "<group>"; };
+		70DAA50F2F484E92002BF661 /* PhotoSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoSelectionView.swift; sourceTree = "<group>"; };
+		70F1900D2F3EF1FA009F4732 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		7073667B2F4340FB00AED26A /* Exceptions for "ZAKAR" folder in "ZAKARAdmin" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"client_703077622763-65q7bbbajbpjrmvck4mlovg3antk0fbc.apps.googleusercontent.com.plist",
+				"GoogleService-Info.plist",
+				LocalDB.swift,
+			);
+			target = 707366642F433FA000AED26A /* ZAKARAdmin */;
+		};
+		70B66E932F42151300561FF1 /* Exceptions for "ZAKAR" folder in "ZAKAR" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 70EA55FA2F39DC1B005866CB /* ZAKAR */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		707366662F433FA000AED26A /* ZAKARAdmin */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ZAKARAdmin;
+			sourceTree = "<group>";
+		};
 		70EA55FD2F39DC1B005866CB /* ZAKAR */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				70B66E932F42151300561FF1 /* Exceptions for "ZAKAR" folder in "ZAKAR" target */,
+				7073667B2F4340FB00AED26A /* Exceptions for "ZAKAR" folder in "ZAKARAdmin" target */,
+			);
 			path = ZAKAR;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		707366622F433FA000AED26A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				70292CB92F458670000432B6 /* FirebaseAuth in Frameworks */,
+				70292CBD2F45868A000432B6 /* FirebaseCore in Frameworks */,
+				70292CBB2F458680000432B6 /* FirebaseFirestore in Frameworks */,
+			);
+		};
 		70EA55F82F39DC1B005866CB /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
+				7073665C2F433EA900AED26A /* FirebaseAuth in Frameworks */,
+				7073665E2F433EA900AED26A /* FirebaseFirestore in Frameworks */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		70292CB72F458670000432B6 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		70EA55F22F39DC1B005866CB = {
 			isa = PBXGroup;
 			children = (
 				70EA55FD2F39DC1B005866CB /* ZAKAR */,
-				70EA55FC2F39DC1B005866CB /* Products */,
+				70F1900D2F3EF1FA009F4732 /* OnboardingView.swift */,
+				70818D572F40AD51000F7F58 /* ZAKAR.app */,
+				707366652F433FA000AED26A /* ZAKARAdmin.app */,
+				707366662F433FA000AED26A /* ZAKARAdmin */,
+				70292CB72F458670000432B6 /* Frameworks */,
+				70DAA50D2F484DFC002BF661 /* AlbumPickerView.swift */,
+				70DAA50F2F484E92002BF661 /* PhotoSelectionView.swift */,
+				708856DF2F4940AA00ED500B /* AppTheme.swift */,
 			);
-			sourceTree = "<group>";
-		};
-		70EA55FC2F39DC1B005866CB /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				70EA55FB2F39DC1B005866CB /* ZAKAR.app */,
-			);
-			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		707366642F433FA000AED26A /* ZAKARAdmin */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7073666D2F433FA100AED26A /* Build configuration list for PBXNativeTarget "ZAKARAdmin" */;
+			buildPhases = (
+				707366612F433FA000AED26A /* Sources */,
+				707366622F433FA000AED26A /* Frameworks */,
+				707366632F433FA000AED26A /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				707366662F433FA000AED26A /* ZAKARAdmin */,
+			);
+			name = ZAKARAdmin;
+			packageProductDependencies = (
+				70292CB82F458670000432B6 /* FirebaseAuth */,
+				70292CBA2F458680000432B6 /* FirebaseFirestore */,
+				70292CBC2F45868A000432B6 /* FirebaseCore */,
+			);
+			productName = ZAKARAdmin;
+			productReference = 707366652F433FA000AED26A /* ZAKARAdmin.app */;
+			productType = "com.apple.product-type.application";
+		};
 		70EA55FA2F39DC1B005866CB /* ZAKAR */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 70EA56062F39DC1D005866CB /* Build configuration list for PBXNativeTarget "ZAKAR" */;
@@ -58,16 +140,16 @@
 			);
 			buildRules = (
 			);
-			dependencies = (
-			);
 			fileSystemSynchronizedGroups = (
 				70EA55FD2F39DC1B005866CB /* ZAKAR */,
 			);
 			name = ZAKAR;
 			packageProductDependencies = (
+				7073665B2F433EA900AED26A /* FirebaseAuth */,
+				7073665D2F433EA900AED26A /* FirebaseFirestore */,
 			);
 			productName = ZAKAR;
-			productReference = 70EA55FB2F39DC1B005866CB /* ZAKAR.app */;
+			productReference = 70818D572F40AD51000F7F58 /* ZAKAR.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -77,9 +159,12 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2620;
-				LastUpgradeCheck = 2620;
+				LastSwiftUpdateCheck = 2630;
+				LastUpgradeCheck = 2630;
 				TargetAttributes = {
+					707366642F433FA000AED26A = {
+						CreatedOnToolsVersion = 26.3;
+					};
 					70EA55FA2F39DC1B005866CB = {
 						CreatedOnToolsVersion = 26.2;
 					};
@@ -94,38 +179,124 @@
 			);
 			mainGroup = 70EA55F22F39DC1B005866CB;
 			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
-			productRefGroup = 70EA55FC2F39DC1B005866CB /* Products */;
+			packageReferences = (
+				7073665A2F433EA900AED26A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+			);
+			preferredProjectObjectVersion = 90;
+			productRefGroup = 70EA55F22F39DC1B005866CB;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				70EA55FA2F39DC1B005866CB /* ZAKAR */,
+				707366642F433FA000AED26A /* ZAKARAdmin */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		70EA55F92F39DC1B005866CB /* Resources */ = {
+		707366632F433FA000AED26A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
+		};
+		70EA55F92F39DC1B005866CB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		70EA55F72F39DC1B005866CB /* Sources */ = {
+		707366612F433FA000AED26A /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
+		};
+		70EA55F72F39DC1B005866CB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+				708856E02F4940AA00ED500B /* AppTheme.swift in Sources */,
+				70F1900E2F3EF1FA009F4732 /* OnboardingView.swift in Sources */,
+				70DAA5102F484E92002BF661 /* PhotoSelectionView.swift in Sources */,
+				70DAA50E2F484DFC002BF661 /* AlbumPickerView.swift in Sources */,
+			);
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		70EA56042F39DC1D005866CB /* Debug */ = {
+		7073666E2F433FA100AED26A /* Debug configuration for PBXNativeTarget "ZAKARAdmin" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = ZAKARAdmin/ZAKARAdmin.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com..ZAKARAdmin;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		7073666F2F433FA100AED26A /* Release configuration for PBXNativeTarget "ZAKARAdmin" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = ZAKARAdmin/ZAKARAdmin.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com..ZAKARAdmin;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		70EA56042F39DC1D005866CB /* Debug configuration for PBXProject "ZAKAR" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -160,6 +331,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 3WZ7DUJB2W;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -183,12 +355,13 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
 		};
-		70EA56052F39DC1D005866CB /* Release */ = {
+		70EA56052F39DC1D005866CB /* Release configuration for PBXProject "ZAKAR" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -223,6 +396,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 3WZ7DUJB2W;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -239,20 +413,27 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
 		};
-		70EA56072F39DC1D005866CB /* Debug */ = {
+		70EA56072F39DC1D005866CB /* Debug configuration for PBXNativeTarget "ZAKAR" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 3WZ7DUJB2W;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ZAKAR/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
+				INFOPLIST_KEY_NSCameraUsageDescription = "사진 촬영을 위해 카메라에 접근합니다.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "정리된 사진을 저장하기 위해 사진 라이브러리에 접근합니다.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "사진을 분석하고 아카이빙하기 위해 사진 라이브러리에 접근합니다.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -263,7 +444,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com..ZAKAR;
+				PRODUCT_BUNDLE_IDENTIFIER = com.zakar.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -275,15 +456,21 @@
 			};
 			name = Debug;
 		};
-		70EA56082F39DC1D005866CB /* Release */ = {
+		70EA56082F39DC1D005866CB /* Release configuration for PBXNativeTarget "ZAKAR" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 3WZ7DUJB2W;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ZAKAR/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
+				INFOPLIST_KEY_NSCameraUsageDescription = "사진 촬영을 위해 카메라에 접근합니다.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "정리된 사진을 저장하기 위해 사진 라이브러리에 접근합니다.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "사진을 분석하고 아카이빙하기 위해 사진 라이브러리에 접근합니다.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -294,7 +481,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com..ZAKAR;
+				PRODUCT_BUNDLE_IDENTIFIER = com.zakar.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -309,25 +496,70 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		7073666D2F433FA100AED26A /* Build configuration list for PBXNativeTarget "ZAKARAdmin" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7073666E2F433FA100AED26A /* Debug configuration for PBXNativeTarget "ZAKARAdmin" */,
+				7073666F2F433FA100AED26A /* Release configuration for PBXNativeTarget "ZAKARAdmin" */,
+			);
+			defaultConfigurationName = Release;
+		};
 		70EA55F62F39DC1B005866CB /* Build configuration list for PBXProject "ZAKAR" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				70EA56042F39DC1D005866CB /* Debug */,
-				70EA56052F39DC1D005866CB /* Release */,
+				70EA56042F39DC1D005866CB /* Debug configuration for PBXProject "ZAKAR" */,
+				70EA56052F39DC1D005866CB /* Release configuration for PBXProject "ZAKAR" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 		70EA56062F39DC1D005866CB /* Build configuration list for PBXNativeTarget "ZAKAR" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				70EA56072F39DC1D005866CB /* Debug */,
-				70EA56082F39DC1D005866CB /* Release */,
+				70EA56072F39DC1D005866CB /* Debug configuration for PBXNativeTarget "ZAKAR" */,
+				70EA56082F39DC1D005866CB /* Release configuration for PBXNativeTarget "ZAKAR" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		7073665A2F433EA900AED26A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.9.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		70292CB82F458670000432B6 /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7073665A2F433EA900AED26A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		70292CBA2F458680000432B6 /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7073665A2F433EA900AED26A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+		70292CBC2F45868A000432B6 /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7073665A2F433EA900AED26A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+		7073665B2F433EA900AED26A /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7073665A2F433EA900AED26A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		7073665D2F433EA900AED26A /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7073665A2F433EA900AED26A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 70EA55F32F39DC1B005866CB /* Project object */;
 }
