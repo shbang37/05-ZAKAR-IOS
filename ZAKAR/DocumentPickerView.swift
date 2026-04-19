@@ -15,7 +15,7 @@ struct DocumentPickerView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                AppTheme.mainPurple
+                PremiumBackground(style: .warm)
                     .ignoresSafeArea()
                 
                 VStack(spacing: 16) {
@@ -171,8 +171,7 @@ struct DocumentPickerView: View {
     private var uploadConfirmationView: some View {
         NavigationView {
             ZStack {
-                AppTheme.mainPurple
-                    .ignoresSafeArea()
+                PremiumBackground(style: .warm)
                 
                 ScrollView {
                     VStack(spacing: 20) {
@@ -324,15 +323,31 @@ struct DocumentPickerView: View {
         showUploadConfirmation = false
         
         let department = auth.currentUser?.department ?? "미분류"
+        let urlsToUpload = selectedURLs
         
-        // TODO: Google Drive 문서 업로드 구현
-        // 현재는 PHAsset 기반 uploadAssets만 있으므로
-        // URL 기반 업로드 메서드가 필요합니다
-        
-        print("[DocumentPicker] Upload \(selectedURLs.count) documents")
+        print("[DocumentPicker] Upload \(urlsToUpload.count) documents")
         print("[DocumentPicker] Department: '\(department)', eventName: '\(eventName)'")
         
-        // 화면 닫기
+        // 업로드 시작 (백그라운드에서 실행)
+        Task {
+            do {
+                // URL 기반 파일 업로드 (문서, 영상 등)
+                try await googleDrive.uploadFiles(
+                    urlsToUpload,
+                    department: department,
+                    eventName: eventName
+                ) { completed, total in
+                    print("[DocumentPicker] Upload progress: \(completed)/\(total)")
+                }
+            } catch {
+                print("[DocumentPicker] Upload failed: \(error)")
+                await MainActor.run {
+                    // 에러 알림 표시 (나중에 추가 가능)
+                }
+            }
+        }
+        
+        // 즉시 화면 닫기 (업로드는 백그라운드에서 계속 진행)
         selectedURLs.removeAll()
         dismiss()
     }

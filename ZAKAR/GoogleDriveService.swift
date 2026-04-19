@@ -443,6 +443,192 @@ final class GoogleDriveService: ZKDriveSyncing, ObservableObject {
         try await uploadDataToFolder(data, fileName: fileName, folderId: folderId, token: token)
     }
     
+    // MARK: - URL 기반 파일 업로드 (영상, 문서 등)
+    /// URL 배열을 Google Drive에 업로드합니다.
+    /// 폴더 구조: ZAKAR/{부서}/{연도}/{날짜}_{이벤트명}/
+    /// 파일명: 원본 파일명 그대로 유지
+    func uploadFiles(
+        _ fileURLs: [URL],
+        department: String,
+        eventName: String,
+        progressHandler: ((Int, Int) -> Void)? = nil
+    ) async throws {
+        guard !fileURLs.isEmpty else { return }
+        
+        print("[GoogleDrive] uploadFiles called with department: '\(department)', eventName: '\(eventName)', file count: \(fileURLs.count)")
+        
+        await MainActor.run {
+            self.isUploading = true
+            self.uploadQueue.removeAll()
+        }
+        
+        defer {
+            Task { @MainActor in
+                self.isUploading = false
+            }
+        }
+        
+        // 현재 날짜를 기준으로 연도 및 날짜 폴더명 생성
+        let referenceDate = Date()
+        let calendar = Calendar.current
+        let year = calendar.component(.year, from: referenceDate)
+        
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        let dateStr = dateFormatter.string(from: referenceDate)
+        
+        // 폴더 경로: ZAKAR/{부서}/{연도}/{날짜}_{이벤트명}/
+        let folderPath = "ZAKAR/\(department)/\(year)/\(dateStr)_\(eventName)/"
+        
+        // 업로드 큐 생성
+        var queue: [DriveUploadItem] = []
+        for url in fileURLs {
+            let fileName = url.lastPathComponent
+            let sizeStr = fileSizeString(url: url) ?? "알 수 없음"
+            queue.append(DriveUploadItem(
+                filename: fileName,
+                size: sizeStr,
+                progress: 0,
+                status: .waiting
+            ))
+        }
+        
+        await MainActor.run {
+            self.uploadQueue = queue
+        }
+        
+        // 📌 폴더를 미리 한 번만 생성
+        print("[GoogleDrive] Creating folder structure: \(folderPath)")
+        let startTime = Date()
+        
+        try await ensureAccessTokenValid()
+        guard let token = accessToken else {
+            throw NSError(domain: "Drive", code: -2, userInfo: [NSLocalizedDescriptionKey: "No access token"])
+        }
+        
+        let folderId = try await ensureFolderPath(folderPath, token: token)
+        let folderCreationTime = Date().timeIntervalSince(startTime)
+        print("[GoogleDrive] Folder created in \(String(format: "%.2f", folderCreationTime))s, folderId: \(folderId)")
+        
+        // 📌 병렬 업로드 (동시 3개씩 처리 - 파일이 클 수 있으므로)
+        let concurrentLimit = 3
+        var completedCount = 0
+        
+        await withTaskGroup(of: (Int, Bool).self) { group in
+            var currentIndex = 0
+            
+            // 초기 배치 시작
+            for index in 0..<min(concurrentLimit, fileURLs.count) {
+                group.addTask {
+                    await self.uploadSingleFile(
+                        index: index,
+                        fileURL: fileURLs[index],
+                        folderId: folderId,
+                        token: token
+                    )
+                }
+                currentIndex += 1
+            }
+            
+            // 완료되는 대로 새 작업 추가
+            for await _ in group {
+                completedCount += 1
+                
+                await MainActor.run {
+                    progressHandler?(completedCount, fileURLs.count)
+                }
+                
+                // 다음 작업 추가
+                if currentIndex < fileURLs.count {
+                    group.addTask {
+                        await self.uploadSingleFile(
+                            index: currentIndex,
+                            fileURL: fileURLs[currentIndex],
+                            folderId: folderId,
+                            token: token
+                        )
+                    }
+                    currentIndex += 1
+                }
+            }
+        }
+        
+        await MainActor.run { self.lastSyncAt = Date() }
+    }
+    
+    // 단일 파일 업로드 (병렬 처리용)
+    private func uploadSingleFile(
+        index: Int,
+        fileURL: URL,
+        folderId: String,
+        token: String
+    ) async -> (Int, Bool) {
+        let fileStartTime = Date()
+        
+        do {
+            // 상태를 uploading으로 변경
+            await MainActor.run {
+                if index < self.uploadQueue.count {
+                    self.uploadQueue[index].status = .uploading
+                }
+            }
+            
+            print("[GoogleDrive] [\(index + 1)] Reading file data...")
+            
+            // 파일 데이터 읽기
+            let fileData = try Data(contentsOf: fileURL)
+            let fileName = fileURL.lastPathComponent
+            
+            let extractTime = Date().timeIntervalSince(fileStartTime)
+            print("[GoogleDrive] [\(index + 1)] Read in \(String(format: "%.2f", extractTime))s, size: \(fileData.count / 1_000_000)MB")
+            
+            print("[GoogleDrive] [\(index + 1)] Uploading '\(fileName)' to Drive...")
+            
+            // Google Drive에 업로드 (원본 파일명 그대로)
+            try await uploadDataToFolder(
+                fileData,
+                fileName: fileName,
+                folderId: folderId,
+                token: token
+            )
+            
+            let totalTime = Date().timeIntervalSince(fileStartTime)
+            print("[GoogleDrive] [\(index + 1)] Completed in \(String(format: "%.2f", totalTime))s")
+            
+            // 상태를 done으로 변경
+            await MainActor.run {
+                if index < self.uploadQueue.count {
+                    self.uploadQueue[index].progress = 1.0
+                    self.uploadQueue[index].status = .done
+                }
+            }
+            
+            return (index, true)
+            
+        } catch {
+            print("[GoogleDrive] [\(index + 1)] Failed: \(error)")
+            // 상태를 failed로 변경
+            await MainActor.run {
+                if index < self.uploadQueue.count {
+                    self.uploadQueue[index].status = .failed
+                }
+            }
+            return (index, false)
+        }
+    }
+    
+    // 파일 크기를 사람이 읽을 수 있는 형식으로 변환
+    private func fileSizeString(url: URL) -> String? {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = attributes[.size] as? Int64 else {
+            return nil
+        }
+        
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: size)
+    }
+    
 
 
     // 구글 로그인 화면을 띄워서 연결해요.

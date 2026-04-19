@@ -136,4 +136,22 @@ final class LocalDB {
             print("LocalDB saveTrashIdentifiers error: \(error)")
         }
     }
+
+    /// 모든 로컬 데이터 삭제 (계정 삭제 시 사용)
+    static func clearAll() {
+        let db = LocalDB.shared
+        do {
+            // metadata.json 삭제
+            if db.fm.fileExists(atPath: db.metadataURL.path) {
+                try db.fm.removeItem(at: db.metadataURL)
+            }
+            // trash.json 삭제
+            if db.fm.fileExists(atPath: db.trashURL.path) {
+                try db.fm.removeItem(at: db.trashURL)
+            }
+            print("✅ LocalDB cleared successfully")
+        } catch {
+            print("❌ LocalDB clearAll error: \(error)")
+        }
+    }
 }

@@ -104,6 +104,19 @@ final class AuthService: ObservableObject {
         #endif
     }
 
+    // MARK: - 계정 삭제
+    func deleteAccount() async throws {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+
+        #if canImport(FirebaseAuth)
+        try await deleteAccountFirebase()
+        #else
+        throw NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Firebase 패키지를 먼저 추가해주세요."])
+        #endif
+    }
+
     // MARK: - 실시간 승인 상태 리스닝 (Firebase 없을 때 no-op)
     func listenForApprovalChange(uid: String) {
         #if canImport(FirebaseAuth)
@@ -125,14 +138,32 @@ extension AuthService {
     private var db: Firestore { Firestore.firestore() }
 
     func checkCurrentSessionFirebase() {
+        print("🟢 ZAKAR Log: checkCurrentSessionFirebase - registering auth listener")
+        
+        // 타임아웃 설정: 5초 내에 Auth 상태 확인 안 되면 unauthenticated로 전환
+        var hasResponded = false
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 5_000_000_000) // 5초
+            if !hasResponded {
+                print("⚠️ ZAKAR Log: Auth listener timeout - forcing unauthenticated")
+                self.authState = .unauthenticated
+                self.currentUser = nil
+            }
+        }
+        
         _authListenerHandle = Auth.auth().addStateDidChangeListener { [weak self] _, firebaseUser in
+            print("🟢 ZAKAR Log: Auth state changed - user: \(firebaseUser?.uid ?? "nil")")
             Task { @MainActor in
                 guard let self else { return }
+                hasResponded = true  // 타임아웃 방지
+                
                 guard let firebaseUser else {
+                    print("🟡 ZAKAR Log: No Firebase user - setting unauthenticated")
                     self.authState = .unauthenticated
                     self.currentUser = nil
                     return
                 }
+                print("🟢 ZAKAR Log: Firebase user found - fetching user record")
                 await self.fetchAndApplyUserRecord(uid: firebaseUser.uid)
             }
         }
@@ -190,21 +221,43 @@ extension AuthService {
         authState = .unauthenticated
     }
 
+    func deleteAccountFirebase() async throws {
+        guard let user = Auth.auth().currentUser else {
+            throw NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "로그인된 사용자가 없습니다."])
+        }
+
+        let uid = user.uid
+
+        // 1. Firestore 사용자 문서 삭제
+        try await db.collection("users").document(uid).delete()
+
+        // 2. Firebase Authentication 계정 삭제
+        try await user.delete()
+
+        // 3. 로컬 상태 초기화
+        currentUser = nil
+        authState = .unauthenticated
+    }
+
     /// Firestore에서 사용자 문서를 읽어 authState에 반영
     func fetchAndApplyUserRecord(uid: String) async {
+        print("🟢 ZAKAR Log: fetchAndApplyUserRecord for uid: \(uid)")
         do {
             let doc = try await db.collection("users").document(uid).getDocument()
             guard let data = doc.data(), let record = UserRecord(firestoreData: data, id: uid) else {
+                print("🔴 ZAKAR Log: User document not found or invalid - setting unauthenticated")
                 authState = .unauthenticated
                 return
             }
             currentUser = record
+            print("🟢 ZAKAR Log: User record loaded - status: \(record.status)")
             switch record.status {
             case .pending:  authState = .pendingApproval
             case .approved: authState = .approved
             case .rejected: authState = .rejected
             }
         } catch {
+            print("🔴 ZAKAR Log: Error fetching user record: \(error.localizedDescription)")
             authState = .unauthenticated
         }
     }

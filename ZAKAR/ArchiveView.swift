@@ -131,9 +131,8 @@ struct ArchiveView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                // 은혜의 새벽 테마 배경
-                AppTheme.backgroundGradient
-                    .ignoresSafeArea()
+                // Premium warm background
+                PremiumBackground(style: .warm)
 
                 ScrollView {
                     VStack(spacing: 20) {
@@ -188,7 +187,7 @@ struct ArchiveView: View {
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .fill(
                                 selectedProvider == provider
-                                    ? AppTheme.dawnPurple.opacity(0.15)
+                                    ? AppTheme.lightPurple.opacity(0.15)
                                     : Color.clear
                             )
                     )
@@ -251,7 +250,7 @@ struct ArchiveView: View {
                 .padding(11)
                 .background(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(AppTheme.dawnPurple.opacity(0.06))
+                        .fill(AppTheme.lightPurple.opacity(0.06))
                         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 )
                 .overlay(
@@ -292,14 +291,14 @@ struct ArchiveView: View {
                     .padding(.vertical, 13)
                     .background(
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(AppTheme.dawnPurple.opacity(0.08))
+                            .fill(AppTheme.lightPurple.opacity(0.08))
                             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .stroke(
                                 LinearGradient(
-                                    colors: [AppTheme.gracefulGold.opacity(0.3), AppTheme.dawnPurple.opacity(0.2)],
+                                    colors: [AppTheme.gracefulGold.opacity(0.3), AppTheme.lightPurple.opacity(0.2)],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 ),
@@ -336,7 +335,7 @@ struct ArchiveView: View {
                         .fill(
                             nasMock.isConnected
                                 ? Color.red.opacity(0.15)
-                                : AppTheme.dawnPurple.opacity(0.08)
+                                : AppTheme.lightPurple.opacity(0.08)
                         )
                         .background(
                             .ultraThinMaterial,
@@ -349,7 +348,7 @@ struct ArchiveView: View {
                             nasMock.isConnected 
                                 ? LinearGradient(colors: [Color.red.opacity(0.3)], startPoint: .leading, endPoint: .trailing)
                                 : LinearGradient(
-                                    colors: [AppTheme.gracefulGold.opacity(0.3), AppTheme.dawnPurple.opacity(0.2)],
+                                    colors: [AppTheme.gracefulGold.opacity(0.3), AppTheme.lightPurple.opacity(0.2)],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 ),
@@ -412,7 +411,7 @@ struct ArchiveView: View {
                             .padding(12)
                             .background(
                                 RoundedRectangle(cornerRadius: 11, style: .continuous)
-                                    .fill(AppTheme.dawnPurple.opacity(0.08))
+                                    .fill(AppTheme.lightPurple.opacity(0.08))
                                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
                             )
                             .overlay(
@@ -553,14 +552,14 @@ struct ArchiveView: View {
                     .padding(.vertical, 13)
                     .background(
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(AppTheme.dawnPurple.opacity(0.08))
+                            .fill(AppTheme.lightPurple.opacity(0.08))
                             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .stroke(
                                 LinearGradient(
-                                    colors: [AppTheme.gracefulGold.opacity(0.3), AppTheme.dawnPurple.opacity(0.2)],
+                                    colors: [AppTheme.gracefulGold.opacity(0.3), AppTheme.lightPurple.opacity(0.2)],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 ),
@@ -665,7 +664,7 @@ struct ArchiveView: View {
             VStack(spacing: 8) {
                 Image(systemName: icon)
                     .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(isSelected ? theme.gradient : LinearGradient(colors: [.white.opacity(0.5)], startPoint: .top, endPoint: .bottom))
+                    .foregroundColor(isSelected ? theme.gradient : .white.opacity(0.5))
                 VStack(spacing: 2) {
                     Text(title)
                         .font(.system(size: 13, weight: .semibold))
@@ -685,7 +684,7 @@ struct ArchiveView: View {
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(isSelected ? theme.gradient : LinearGradient(colors: [Color.white.opacity(0.1)], startPoint: .top, endPoint: .bottom), lineWidth: 1)
+                    .stroke(isSelected ? theme.gradient : Color.white.opacity(0.1), lineWidth: 1)
             )
         }
     }
@@ -715,7 +714,7 @@ struct ArchiveView: View {
             HStack {
                 Image(systemName: "photo.on.rectangle.angled")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(theme.gradient)
+                    .foregroundColor(theme.gradient)
                 Text("앨범 선택 업로드")
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
@@ -723,11 +722,11 @@ struct ArchiveView: View {
             
             Text("사진 앨범을 선택하면 자동으로 폴더명이 생성되고 파일명이 변환됩니다.")
                 .font(.system(size: 13))
-                .foregroundColor(AppTheme.dawnPurple.opacity(0.8))
+                .foregroundColor(AppTheme.gracefulGold.opacity(0.7))
                 .lineSpacing(3)
             
             VStack(alignment: .leading, spacing: 6) {
-                infoRow(icon: "folder", text: "폴더: ZAKAR/\(auth.currentUser?.department ?? "부서")/2026/\(auth.currentUser?.department ?? "부서")_날짜_이벤트명/")
+                infoRow(icon: "folder", text: "폴더: ZAKAR/일반/2026/일반_날짜_이벤트명/")
                 infoRow(icon: "doc.text", text: "파일: 원본명.jpg")
             }
             .padding(10)
@@ -770,7 +769,7 @@ struct ArchiveView: View {
             HStack {
                 Image(systemName: "photo.stack")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(theme.gradient)
+                    .foregroundColor(theme.gradient)
                 Text("개별 사진 선택 업로드")
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
@@ -782,7 +781,7 @@ struct ArchiveView: View {
                 .lineSpacing(3)
             
             VStack(alignment: .leading, spacing: 6) {
-                infoRow(icon: "folder", text: "폴더: ZAKAR/\(auth.currentUser?.department ?? "부서")/2026/\(auth.currentUser?.department ?? "부서")_날짜_이벤트명/")
+                infoRow(icon: "folder", text: "폴더: ZAKAR/일반/2026/일반_날짜_이벤트명/")
                 infoRow(icon: "doc.text", text: "파일: 원본명.jpg")
             }
             .padding(10)
@@ -836,7 +835,7 @@ struct ArchiveView: View {
                 .lineSpacing(3)
             
             VStack(alignment: .leading, spacing: 6) {
-                infoRow(icon: "folder", text: "폴더: ZAKAR/\(auth.currentUser?.department ?? "부서")/2026/\(auth.currentUser?.department ?? "부서")_날짜_이벤트명/")
+                infoRow(icon: "folder", text: "폴더: ZAKAR/일반/2026/일반_날짜_이벤트명/")
                 infoRow(icon: "doc.text", text: "파일: 원본명.mp4")
             }
             .padding(10)
@@ -890,7 +889,7 @@ struct ArchiveView: View {
                 .lineSpacing(3)
             
             VStack(alignment: .leading, spacing: 6) {
-                infoRow(icon: "folder", text: "폴더: ZAKAR/\(auth.currentUser?.department ?? "부서")/2026/\(auth.currentUser?.department ?? "부서")_날짜_이벤트명/")
+                infoRow(icon: "folder", text: "폴더: ZAKAR/일반/2026/일반_날짜_이벤트명/")
                 infoRow(icon: "doc.text", text: "파일: 원본명.pdf")
             }
             .padding(10)
@@ -973,38 +972,104 @@ struct ArchiveView: View {
     
     // MARK: - Google Drive 업로드 큐 카드
     private var driveQueueCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let doneCount = googleDrive.uploadQueue.filter { $0.status == .done }.count
+        let uploadingCount = googleDrive.uploadQueue.filter { $0.status == .uploading }.count
+        let totalProgress = Double(doneCount) / Double(max(googleDrive.uploadQueue.count, 1))
+        
+        return VStack(alignment: .leading, spacing: 12) {
+            // 헤더
             HStack {
-                Text("업로드 현황")
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .foregroundColor(.white.opacity(0.8))
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(AppTheme.gracefulGold)
+                    Text("업로드 현황")
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                }
+                
                 Spacer()
-                let doneCount = googleDrive.uploadQueue.filter { $0.status == .done }.count
-                Text("\(doneCount) / \(googleDrive.uploadQueue.count) 완료")
-                    .font(.system(size: 12))
-                    .foregroundColor(.white.opacity(0.45))
+                
+                HStack(spacing: 4) {
+                    if uploadingCount > 0 {
+                        ProgressView()
+                            .tint(AppTheme.gracefulGold)
+                            .scaleEffect(0.7)
+                    }
+                    Text("\(doneCount) / \(googleDrive.uploadQueue.count)")
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundColor(uploadingCount > 0 ? AppTheme.gracefulGold : .green.opacity(0.9))
+                }
             }
+            
+            // 전체 진행률 바
+            VStack(alignment: .leading, spacing: 4) {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.white.opacity(0.1))
+                            .frame(height: 6)
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(
+                                LinearGradient(
+                                    colors: [AppTheme.gracefulGold, AppTheme.goldenRose],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(width: geo.size.width * totalProgress, height: 6)
+                            .animation(.easeInOut(duration: 0.3), value: totalProgress)
+                    }
+                }
+                .frame(height: 6)
+                
+                if uploadingCount > 0 {
+                    Text("\(uploadingCount)개 업로드 중...")
+                        .font(.system(size: 11))
+                        .foregroundColor(.white.opacity(0.5))
+                }
+            }
+            
+            Divider()
+                .background(Color.white.opacity(0.1))
 
-            ForEach(googleDrive.uploadQueue) { item in
+            // 업로드 항목 리스트 (최대 5개만 표시)
+            ForEach(googleDrive.uploadQueue.prefix(5)) { item in
                 DriveUploadRow(item: item)
+            }
+            
+            // 더 많은 항목이 있으면 표시
+            if googleDrive.uploadQueue.count > 5 {
+                Text("외 \(googleDrive.uploadQueue.count - 5)개 항목...")
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.4))
+                    .padding(.leading, 30)
             }
             
             // 완료 항목 정리 버튼
             if googleDrive.uploadQueue.contains(where: { $0.status == .done }) {
                 Button {
-                    googleDrive.clearCompletedUploads()
-                } label: {
-                    HStack {
-                        Image(systemName: "checkmark.circle.trianglebadge.exclamationmark")
-                            .font(.system(size: 14))
-                        Text("완료 항목 정리")
-                            .font(.system(size: 13, weight: .medium))
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        googleDrive.clearCompletedUploads()
                     }
-                    .foregroundColor(.white.opacity(0.6))
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("완료 항목 정리")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundColor(AppTheme.gracefulGold.opacity(0.8))
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .padding(.vertical, 11)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(AppTheme.gracefulGold.opacity(0.1))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(AppTheme.gracefulGold.opacity(0.3), lineWidth: 1)
+                    )
                 }
             }
         }
@@ -1094,8 +1159,8 @@ struct DriveUploadRow: View {
 
     var statusColor: Color {
         switch item.status {
-        case .waiting:   return .white.opacity(0.3)
-        case .uploading: return .green
+        case .waiting:   return .white.opacity(0.4)
+        case .uploading: return AppTheme.gracefulGold
         case .done:      return .green
         case .failed:    return .red
         }
@@ -1104,62 +1169,102 @@ struct DriveUploadRow: View {
     var statusIcon: String {
         switch item.status {
         case .waiting:   return "clock"
-        case .uploading: return "arrow.up.circle"
+        case .uploading: return "arrow.up.circle.fill"
         case .done:      return "checkmark.circle.fill"
         case .failed:    return "xmark.circle.fill"
+        }
+    }
+    
+    var fileIcon: String {
+        let ext = (item.filename as NSString).pathExtension.lowercased()
+        switch ext {
+        case "jpg", "jpeg", "png", "heic", "heif":
+            return "photo.fill"
+        case "mp4", "mov", "m4v":
+            return "video.fill"
+        case "pdf":
+            return "doc.fill"
+        case "doc", "docx":
+            return "doc.text.fill"
+        case "xls", "xlsx":
+            return "tablecells.fill"
+        case "ppt", "pptx":
+            return "play.rectangle.fill"
+        default:
+            return "doc.fill"
         }
     }
 
     var body: some View {
         VStack(spacing: 6) {
             HStack(spacing: 10) {
-                Image(systemName: statusIcon)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(statusColor)
-                    .frame(width: 20)
+                // 파일 타입 아이콘
+                ZStack {
+                    Circle()
+                        .fill(statusColor.opacity(0.15))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: fileIcon)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(statusColor)
+                }
 
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(item.filename)
-                        .font(.system(size: 13, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.85))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.white.opacity(0.9))
                         .lineLimit(1)
-                    Text(item.size)
-                        .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.4))
+                    HStack(spacing: 6) {
+                        Text(item.size)
+                            .font(.system(size: 11))
+                            .foregroundColor(.white.opacity(0.4))
+                        
+                        if item.status == .uploading {
+                            Text("•")
+                                .font(.system(size: 11))
+                                .foregroundColor(.white.opacity(0.3))
+                            Text("\(Int(item.progress * 100))%")
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .foregroundColor(AppTheme.gracefulGold.opacity(0.8))
+                        }
+                    }
                 }
 
                 Spacer()
 
-                if item.status == .uploading {
-                    Text("\(Int(item.progress * 100))%")
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                        .foregroundColor(.green.opacity(0.8))
-                } else if item.status == .done {
-                    Text("완료")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.green.opacity(0.8))
-                }
+                // 상태 아이콘
+                Image(systemName: statusIcon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(statusColor)
+                    .symbolEffect(.pulse, options: .repeating, value: item.status == .uploading)
             }
 
             // 진행률 바
             if item.status == .uploading || item.status == .done {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 3)
+                        RoundedRectangle(cornerRadius: 2.5)
                             .fill(Color.white.opacity(0.08))
-                            .frame(height: 3)
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(item.status == .done ? Color.green : Color.green)
-                            .frame(width: geo.size.width * item.progress, height: 3)
-                            .animation(.easeInOut(duration: 0.15), value: item.progress)
+                            .frame(height: 4)
+                        RoundedRectangle(cornerRadius: 2.5)
+                            .fill(
+                                item.status == .done 
+                                    ? LinearGradient(colors: [.green, .green.opacity(0.8)], startPoint: .leading, endPoint: .trailing)
+                                    : LinearGradient(colors: [AppTheme.gracefulGold, AppTheme.goldenRose], startPoint: .leading, endPoint: .trailing)
+                            )
+                            .frame(width: geo.size.width * item.progress, height: 4)
+                            .animation(.easeInOut(duration: 0.2), value: item.progress)
                     }
                 }
-                .frame(height: 3)
-                .padding(.leading, 30)
+                .frame(height: 4)
+                .padding(.leading, 42)
             }
         }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 4)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.white.opacity(item.status == .uploading ? 0.03 : 0.01))
+        )
     }
 }
 

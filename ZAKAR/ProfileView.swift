@@ -6,19 +6,19 @@ struct ProfileView: View {
     @EnvironmentObject private var drive: GoogleDriveService
     @State private var showSignOutAlert = false
     @State private var showDriveError = false
+    @State private var showDeleteAccountAlert = false
+    @State private var isDeleting = false
 
     var body: some View {
         NavigationView {
             ZStack {
-                AppTheme.backgroundGradient
+                PremiumBackground(style: .deep)
                     .ignoresSafeArea()
 
                 ScrollView {
                     VStack(spacing: 20) {
                         // 프로필 카드
-                        if let user = auth.currentUser {
-                            profileCard(user: user)
-                        }
+                        profileCard
 
                         // 구글 드라이브 연결 카드
                         driveConnectionCard
@@ -28,8 +28,11 @@ struct ProfileView: View {
 
                         Spacer(minLength: 20)
 
-                        // 로그아웃
+                        // 로그아웃 버튼
                         signOutButton
+                        
+                        // 계정 삭제 버튼
+                        deleteAccountButton
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 16)
@@ -50,10 +53,20 @@ struct ProfileView: View {
         } message: {
             Text("로그아웃 하시겠습니까?")
         }
+        .alert("계정 삭제", isPresented: $showDeleteAccountAlert) {
+            Button("취소", role: .cancel) {}
+            Button("삭제", role: .destructive) {
+                Task {
+                    await deleteAccount()
+                }
+            }
+        } message: {
+            Text("계정을 삭제하면 모든 데이터가 영구적으로 삭제됩니다.\n이 작업은 취소할 수 없습니다.\n\n정말 삭제하시겠습니까?")
+        }
     }
 
     // MARK: - 프로필 카드
-    private func profileCard(user: UserRecord) -> some View {
+    private var profileCard: some View {
         VStack(spacing: 16) {
             // 아바타
             ZStack {
@@ -64,25 +77,27 @@ struct ProfileView: View {
                         Circle()
                             .stroke(AppTheme.gracefulGold.opacity(0.4), lineWidth: 2)
                     )
-                    .shadow(color: AppTheme.dawnPurple.opacity(0.3), radius: 15)
-                Text(String(user.name.prefix(1)))
+                    .shadow(color: AppTheme.gracefulGold.opacity(0.3), radius: 15)
+                Text(auth.currentUser?.name.prefix(1).uppercased() ?? "?")
                     .font(.system(size: 28, weight: .bold))
                     .foregroundColor(.white)
             }
 
             VStack(spacing: 6) {
-                Text(user.name)
+                Text(auth.currentUser?.name ?? "사용자")
                     .font(.system(size: 20, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
-                Text(user.email)
+                Text(auth.currentUser?.department ?? "")
                     .font(.system(size: 13))
                     .foregroundColor(.white.opacity(0.5))
             }
 
-            // 역할 + 상태 배지
-            HStack(spacing: 8) {
-                roleBadge(user.role)
-                statusBadge(user.status)
+            // 역할 및 상태 배지
+            if let user = auth.currentUser {
+                HStack(spacing: 8) {
+                    roleBadge(user.role)
+                    statusBadge(user.status)
+                }
             }
         }
         .padding(24)
@@ -91,7 +106,7 @@ struct ProfileView: View {
     }
 
     private func roleBadge(_ role: UserRecord.UserRole) -> some View {
-        let color: Color = role == .admin ? AppTheme.dawnPurple : (role == .reporter ? AppTheme.gracefulGold : AppTheme.softMint)
+        let color: Color = role == .admin ? AppTheme.lightPurple : (role == .reporter ? AppTheme.gracefulGold : AppTheme.gracefulGold)
         return Text(role.displayName)
             .font(.system(size: 12, weight: .bold))
             .foregroundColor(color)
@@ -127,9 +142,9 @@ struct ProfileView: View {
                 Spacer()
                 if drive.isLinked {
                     Circle()
-                        .fill(AppTheme.softMint)
+                        .fill(AppTheme.gracefulGold)
                         .frame(width: 8, height: 8)
-                        .shadow(color: AppTheme.softMint.opacity(0.5), radius: 4)
+                        .shadow(color: AppTheme.gracefulGold.opacity(0.5), radius: 4)
                 }
             }
 
@@ -139,7 +154,7 @@ struct ProfileView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 13))
-                            .foregroundColor(AppTheme.softMint)
+                            .foregroundColor(AppTheme.gracefulGold)
                         Text("연결됨")
                             .font(.system(size: 13, weight: .medium))
                             .foregroundColor(.white.opacity(0.8))
@@ -267,6 +282,56 @@ struct ProfileView: View {
                 .stroke(Color.red.opacity(0.25), lineWidth: 0.5))
         }
         .padding(.bottom, 8)
+    }
+    
+    // MARK: - 계정 삭제 버튼
+    private var deleteAccountButton: some View {
+        Button {
+            showDeleteAccountAlert = true
+        } label: {
+            HStack(spacing: 8) {
+                if isDeleting {
+                    ProgressView()
+                        .tint(.white)
+                        .scaleEffect(0.9)
+                } else {
+                    Image(systemName: "trash")
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                Text(isDeleting ? "삭제 중..." : "계정 삭제")
+                    .font(.system(size: 15, weight: .semibold))
+            }
+            .foregroundColor(.white.opacity(0.6))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(Color.white.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.white.opacity(0.1), lineWidth: 0.5))
+        }
+        .disabled(isDeleting)
+    }
+
+    // MARK: - 계정 삭제 로직
+    private func deleteAccount() async {
+        isDeleting = true
+        defer { isDeleting = false }
+
+        do {
+            // 1. LocalDB 초기화
+            LocalDB.clearAll()
+
+            // 2. Google Drive 연결 해제
+            drive.unlink()
+
+            // 3. Firebase 계정 삭제 (Firestore + Authentication)
+            try await auth.deleteAccount()
+
+            // 성공 시 자동으로 로그인 화면으로 이동 (authState가 .unauthenticated로 변경됨)
+        } catch {
+            // 오류 처리
+            auth.errorMessage = "계정 삭제 실패: \(error.localizedDescription)"
+        }
     }
 }
 

@@ -16,13 +16,15 @@ struct VideoPickerView: View {
     @State private var videoAssets: [PHAsset] = []
     
     private let columns = [
-        GridItem(.adaptive(minimum: 100, maximum: 120), spacing: 2)
+        GridItem(.flexible(), spacing: 4),
+        GridItem(.flexible(), spacing: 4),
+        GridItem(.flexible(), spacing: 4)
     ]
     
     var body: some View {
         NavigationView {
             ZStack {
-                AppTheme.mainPurple
+                PremiumBackground(style: .warm)
                     .ignoresSafeArea()
                 
                 VStack(spacing: 0) {
@@ -128,12 +130,12 @@ struct VideoPickerView: View {
     // MARK: - 영상 그리드
     private var videoGridSection: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 2) {
+            LazyVGrid(columns: columns, spacing: 4) {
                 ForEach(videoAssets, id: \.localIdentifier) { asset in
                     videoCell(asset: asset)
                 }
             }
-            .padding(2)
+            .padding(8)
         }
     }
     
@@ -150,7 +152,7 @@ struct VideoPickerView: View {
             ZStack(alignment: .topTrailing) {
                 // 영상 썸네일
                 VideoThumbnail(asset: asset)
-                    .aspectRatio(1, contentMode: .fill)
+                    .frame(width: 120, height: 120)
                     .clipped()
                 
                 // 재생 시간 표시
@@ -214,8 +216,7 @@ struct VideoPickerView: View {
     private var uploadConfirmationView: some View {
         NavigationView {
             ZStack {
-                AppTheme.mainPurple
-                    .ignoresSafeArea()
+                PremiumBackground(style: .warm)
                 
                 ScrollView {
                     VStack(spacing: 20) {
@@ -404,17 +405,23 @@ struct VideoPickerView: View {
         // 업로드 시작 (백그라운드에서 실행)
         Task {
             do {
+                // PHAsset 기반 업로드 (영상도 PHAsset으로 처리)
                 try await googleDrive.uploadAssets(
                     assetArray,
                     department: department,
                     eventName: eventName
-                )
+                ) { completed, total in
+                    print("[VideoPicker] Upload progress: \(completed)/\(total)")
+                }
             } catch {
                 print("[VideoPicker] Upload failed: \(error)")
+                await MainActor.run {
+                    // 에러 알림 표시 (나중에 추가 가능)
+                }
             }
         }
         
-        // 즉시 화면 닫기
+        // 즉시 화면 닫기 (업로드는 백그라운드에서 계속 진행)
         selectedAssets.removeAll()
         dismiss()
     }

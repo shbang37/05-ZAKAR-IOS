@@ -17,10 +17,10 @@ struct LoginView: View {
     enum Field { case name, email, password, confirmPassword }
 
     var body: some View {
-        ZStack {
-            // 배경 - 은혜의 새벽 테마 적용
-            AppTheme.backgroundGradient
-                .ignoresSafeArea()
+        print("🔵 ZAKAR Log: LoginView.body - Rendering LoginView")
+        return ZStack {
+            // Premium background
+            PremiumBackground(style: .warm)
 
             ScrollView {
                 VStack(spacing: 0) {
@@ -75,7 +75,10 @@ struct LoginView: View {
             .scrollDismissesKeyboard(.interactively)
         }
         .preferredColorScheme(.dark)
-        .onAppear { withAnimation(.easeOut(duration: 0.6)) { appear = true } }
+        .onAppear {
+            print("🔵 ZAKAR Log: LoginView.onAppear - LoginView appeared")
+            withAnimation(.easeOut(duration: 0.6)) { appear = true }
+        }
         .animation(.easeInOut(duration: 0.25), value: mode)
         .animation(.easeInOut(duration: 0.2), value: auth.errorMessage)
     }
@@ -103,9 +106,10 @@ struct LoginView: View {
                 .tracking(4)
                 .opacity(appear ? 1 : 0)
 
-            Text("은혜의 교회 아카이브")
+            Text("교회 공동체의 소중한 순간을 함께 기록합니다")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(.white.opacity(0.45))
+                .multilineTextAlignment(.center)
                 .opacity(appear ? 1 : 0)
         }
     }

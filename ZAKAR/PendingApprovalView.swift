@@ -8,7 +8,7 @@ struct PendingApprovalView: View {
 
     var body: some View {
         ZStack {
-            AppTheme.mainPurple
+            PremiumBackground(style: .warm)
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -44,7 +44,7 @@ struct PendingApprovalView: View {
                         .font(.system(size: 24, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
 
-                    Text("관리자가 회원 가입 요청을 검토하고 있습니다.\n승인되면 즉시 앱이 열립니다.")
+                    Text("공동체 관리자의 승인 후 이용하실 수 있습니다.\n담당자에게 문의해 주세요.")
                         .font(.system(size: 14))
                         .foregroundColor(.white.opacity(0.55))
                         .multilineTextAlignment(.center)
@@ -185,8 +185,7 @@ struct RejectedView: View {
 
     var body: some View {
         ZStack {
-            AppTheme.mainPurple
-                .ignoresSafeArea()
+            PremiumBackground(style: .warm)
 
             VStack(spacing: 0) {
                 Spacer()

@@ -17,5 +17,7 @@
 	<string>교회 행사 사진을 분석하고 유사 사진을 자동으로 분류하기 위해 앨범 접근 권한이 필요합니다.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>정리한 사진을 앨범에 저장하고 즐겨찾기 표시를 위해 권한이 필요합니다.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>

@@ -12,7 +12,7 @@ struct OnboardingView: View {
     var body: some View {
         ZStack {
             // 배경 (은혜의교회 퍼플)
-            AppTheme.mainPurple
+            PremiumBackground(style: .warm)
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -38,6 +38,8 @@ struct OnboardingView: View {
         }
         .preferredColorScheme(.dark)
         .onAppear {
+            // 주의: authorizationStatus(for:)는 첫 실행 시 자동으로 권한 다이얼로그를 트리거할 수 있음
+            // 따라서 권한 상태만 확인하고, 실제 요청은 사용자가 버튼을 눌렀을 때만 수행
             permissionStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         }
     }
@@ -822,7 +824,36 @@ struct OnboardingPermissionPage: View {
 
             // 권한 요청 / 시작 버튼
             VStack(spacing: 12) {
-                if !permissionGranted {
+                if permissionGranted {
+                    // 권한 허용됨 → 시작 버튼
+                    Button(action: onFinish) {
+                        Text("ZAKAR 시작하기")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(.black)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    .padding(.horizontal, 24)
+                } else if permissionStatus == .denied || permissionStatus == .restricted {
+                    // 권한 거부됨 → 설정으로 이동
+                    Button(action: openSettings) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "gear")
+                                .font(.system(size: 16, weight: .semibold))
+                            Text("설정에서 권한 허용하기")
+                                .font(.system(size: 16, weight: .bold))
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(Color.orange)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    .padding(.horizontal, 24)
+                } else {
+                    // 권한 미결정 → "계속" 버튼 (사용자가 직접 눌러야 권한 요청)
                     Button(action: requestPermission) {
                         HStack(spacing: 8) {
                             if isRequesting {
@@ -831,7 +862,7 @@ struct OnboardingPermissionPage: View {
                                 Image(systemName: "photo")
                                     .font(.system(size: 16, weight: .semibold))
                             }
-                            Text(isRequesting ? "요청 중..." : "사진 접근 허용하기")
+                            Text(isRequesting ? "요청 중..." : "계속")
                                 .font(.system(size: 16, weight: .bold))
                         }
                         .foregroundColor(.white)
@@ -843,24 +874,6 @@ struct OnboardingPermissionPage: View {
                     .disabled(isRequesting)
                     .padding(.horizontal, 24)
                 }
-
-                Button(action: onFinish) {
-                    Text(permissionGranted ? "ZAKAR 시작하기" : "나중에 설정하기")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(permissionGranted ? .black : .white.opacity(0.6))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(permissionGranted
-                            ? Color.white
-                            : Color.white.opacity(0.08))
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .overlay(
-                            permissionGranted ? nil :
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
-                        )
-                }
-                .padding(.horizontal, 24)
             }
             .opacity(appear ? 1 : 0)
             .animation(.easeOut(duration: 0.5).delay(0.35), value: appear)
@@ -877,7 +890,10 @@ struct OnboardingPermissionPage: View {
                 .opacity(appear ? 1 : 0)
                 .animation(.easeOut(duration: 0.5).delay(0.5), value: appear)
         }
-        .onAppear { appear = true }
+        .onAppear {
+            appear = true
+            // 자동 권한 요청 제거 - 사용자가 "계속" 버튼을 직접 눌러야 함
+        }
     }
 
     private var permissionGranted: Bool {
@@ -903,6 +919,12 @@ struct OnboardingPermissionPage: View {
                 permissionStatus = status
                 isRequesting = false
             }
+        }
+    }
+
+    private func openSettings() {
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
         }
     }
 }

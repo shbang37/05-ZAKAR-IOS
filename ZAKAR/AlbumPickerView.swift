@@ -18,7 +18,7 @@ struct AlbumPickerView: View {
         NavigationView {
             ZStack {
                 // 배경 (은혜의교회 퍼플)
-                AppTheme.mainPurple
+                PremiumBackground(style: .cool)
                     .ignoresSafeArea()
                 
                 ScrollView {
@@ -175,8 +175,7 @@ struct AlbumPickerView: View {
     private func albumDetailView(album: AlbumInfo) -> some View {
         NavigationView {
             ZStack {
-                AppTheme.mainPurple
-                    .ignoresSafeArea()
+                PremiumBackground(style: .cool)
                 
                 ScrollView {
                     VStack(spacing: 20) {

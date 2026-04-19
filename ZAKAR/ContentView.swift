@@ -11,9 +11,6 @@ struct ContentView: View {
     
     private let initialTabParam: Int
     
-    // [해결] UIImage 대신 PHAsset 배열을 사용하여 타입 불일치 해결
-    @State private var trashAssets: [PHAsset] = []
-    
     @State private var showTrashView = false
     @State private var isCleanModeActive = false
     @State private var selectedPhotosForClean: [PHAsset] = []
@@ -26,6 +23,7 @@ struct ContentView: View {
     @State private var newAlbumName: String = ""
     
     @State private var showTutorialOverlay = false
+    @State private var showAutoCleanDialog = false
 
     init(initialTab: Int = 0, year: Int? = nil, month: Int? = nil) {
         self._selectedTab = State(initialValue: initialTab)
@@ -33,101 +31,126 @@ struct ContentView: View {
         self.filterMonth = month
         self.initialTabParam = initialTab
     }
+    
+    @ViewBuilder
+    private var mainContent: some View {
+        if photoManager.isLoadingList {
+            loadingView
+        } else {
+            ScrollView {
+                Color.clear.frame(height: 10)
+                
+                if selectedTab == 0 {
+                    similarPhotosContent
+                } else {
+                    allPhotosContent
+                }
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var loadingView: some View {
+        VStack(spacing: 15) {
+            ProgressView().tint(AppTheme.lightPurple)
+            Text("사진 목록 불러오는 중...").foregroundColor(AppTheme.gracefulGold.opacity(0.7)).font(.caption)
+        }
+        .padding(24)
+        .background(GlassCard(cornerRadius: 20))
+        .frame(maxHeight: .infinity)
+    }
+    
+    @ViewBuilder
+    private var similarPhotosContent: some View {
+        if photoManager.isAnalyzing {
+            HStack(spacing: 8) {
+                ProgressView().tint(AppTheme.lightPurple)
+                Text("유사 사진 분석 중...")
+                    .foregroundColor(AppTheme.gracefulGold.opacity(0.8))
+                    .font(.caption)
+            }
+            .padding(.bottom, 8)
+        }
+        
+        if photoManager.groupedPhotos.isEmpty && !photoManager.isAnalyzing {
+            VStack(spacing: 10) {
+                Image(systemName: "checkmark.circle")
+                    .font(.system(size: 50))
+                    .foregroundColor(.green)
+                Text("유사 사진이 없습니다")
+                    .foregroundColor(.gray)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(40)
+        } else {
+            similarGroupsList
+        }
+    }
+    
+    @ViewBuilder
+    private var similarGroupsList: some View {
+        LazyVStack(spacing: 16) {
+            ForEach(photoManager.groupedPhotos.indices, id: \.self) { groupIndex in
+                SimilarityGroupRow(group: photoManager.groupedPhotos[groupIndex]) { photoIndex in
+                    openCleanMode(at: photoIndex, groupIndex: groupIndex)
+                }
+                .padding(12)
+                .background(groupRowBackground)
+            }
+        }
+        .padding(.horizontal)
+    }
+    
+    private var groupRowBackground: some View {
+        RoundedRectangle(cornerRadius: 20, style: .continuous)
+            .fill(Color.white.opacity(0.06))
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(LinearGradient(colors: [Color.white.opacity(0.25), Color.white.opacity(0.05)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
+            )
+    }
+    
+    @ViewBuilder
+    private var allPhotosContent: some View {
+        if photoManager.allPhotos.isEmpty {
+            VStack(spacing: 10) {
+                Image(systemName: "photo.on.rectangle.angled")
+                    .font(.system(size: 50))
+                    .foregroundColor(.gray)
+                Text("사진이 없습니다")
+                    .foregroundColor(.gray)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(40)
+        } else {
+            photoGrid
+        }
+    }
+    
+    private var photoGrid: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 2)], spacing: 2) {
+            ForEach(photoManager.allPhotos.indices, id: \.self) { photoIndex in
+                Button {
+                    openCleanMode(at: photoIndex, groupIndex: nil)
+                } label: {
+                    AssetThumbnail(asset: photoManager.allPhotos[photoIndex], size: 125)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.white.opacity(0.08), lineWidth: 0.8))
+                        .shadow(color: Color.black.opacity(0.25), radius: 10, x: 0, y: 6)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
 
     var body: some View {
         NavigationView {
             ZStack {
-                AppTheme.backgroundGradient
-                    .ignoresSafeArea()
-
-                // Vignette
-                RadialGradient(gradient: Gradient(colors: [Color.clear, AppTheme.bgDeepPurple.opacity(0.5)]), center: .center, startRadius: 100, endRadius: 600)
-                    .ignoresSafeArea()
-                    .blendMode(.multiply)
+                PremiumBackground(style: .deep)
 
                 VStack(spacing: 0) {
-                    if photoManager.isLoadingList {
-                        VStack(spacing: 15) {
-                            ProgressView().tint(AppTheme.dawnPurple)
-                            Text("사진 목록 불러오는 중...").foregroundColor(AppTheme.gracefulGold.opacity(0.7)).font(.caption)
-                        }
-                        .padding(24)
-                        .background(GlassCard(cornerRadius: 20))
-                        .frame(maxHeight: .infinity)
-                    } else {
-                        ScrollView {
-                            Color.clear.frame(height: 10)
-                            
-                            if selectedTab == 0 {
-                                if photoManager.isAnalyzing {
-                                    HStack(spacing: 8) {
-                                        ProgressView().tint(AppTheme.dawnPurple)
-                                        Text("유사 사진 분석 중...")
-                                            .foregroundColor(AppTheme.gracefulGold.opacity(0.8))
-                                            .font(.caption)
-                                    }
-                                    .padding(.bottom, 8)
-                                }
-                                
-                                // 1. 정리 대상 (유사 그룹 레이아웃)
-                                if photoManager.groupedPhotos.isEmpty && !photoManager.isAnalyzing {
-                                    VStack(spacing: 10) {
-                                        Image(systemName: "checkmark.circle")
-                                            .font(.system(size: 50))
-                                            .foregroundColor(.green)
-                                        Text("유사 사진이 없습니다")
-                                            .foregroundColor(.gray)
-                                    }
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                    .padding(40)
-                                } else {
-                                    LazyVStack(spacing: 16) {
-                                        ForEach(photoManager.groupedPhotos.indices, id: \.self) { groupIndex in
-                                            SimilarityGroupRow(group: photoManager.groupedPhotos[groupIndex]) { photoIndex in
-                                                openCleanMode(at: photoIndex, groupIndex: groupIndex)
-                                            }
-                                            .padding(12)
-                                            .background(
-                                                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                                    .fill(Color.white.opacity(0.06))
-                                                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                                                    .overlay(
-                                                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                                            .stroke(LinearGradient(colors: [Color.white.opacity(0.25), Color.white.opacity(0.05)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
-                                                    )
-                                            )
-                                        }
-                                    }
-                                    .padding(.horizontal)
-                                }
-                            } else {
-                                // 2. 모든 사진 그리드
-                                if photoManager.allPhotos.isEmpty {
-                                    VStack(spacing: 10) {
-                                        Image(systemName: "photo.on.rectangle.angled")
-                                            .font(.system(size: 50))
-                                            .foregroundColor(.gray)
-                                        Text("사진이 없습니다")
-                                            .foregroundColor(.gray)
-                                    }
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                    .padding(40)
-                                } else {
-                                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 2)], spacing: 2) {
-                                        ForEach(photoManager.allPhotos.indices, id: \.self) { photoIndex in
-                                            AssetThumbnail(asset: photoManager.allPhotos[photoIndex], size: 125)
-                                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.white.opacity(0.08), lineWidth: 0.8))
-                                                .shadow(color: Color.black.opacity(0.25), radius: 10, x: 0, y: 6)
-                                                .onTapGesture {
-                                                    openCleanMode(at: photoIndex, groupIndex: nil)
-                                                }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    mainContent
                 }
                 .padding(.top, 6)
                 .background(
@@ -173,6 +196,44 @@ struct ContentView: View {
                         )
                         .transition(.opacity)
                 }
+                
+                // 플로팅 자동 정리 버튼 (유사 사진 탭에서만 표시)
+                if selectedTab == 0 && !photoManager.groupedPhotos.isEmpty && !photoManager.isAnalyzing {
+                    VStack {
+                        Spacer()
+                        
+                        Button {
+                            showAutoCleanDialog = true
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 16, weight: .semibold))
+                                Text("대표만 남기기")
+                                    .font(.system(size: 16, weight: .semibold))
+                            }
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 14)
+                            .background(
+                                Capsule()
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [AppTheme.gracefulGold, AppTheme.gracefulGold.opacity(0.8)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .shadow(color: AppTheme.gracefulGold.opacity(0.5), radius: 12, x: 0, y: 6)
+                            )
+                            .overlay(
+                                Capsule()
+                                    .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                            )
+                        }
+                        .padding(.bottom, 90) // 하단 탭바 위로 배치
+                        .accessibilityLabel("대표 사진만 자동 선택")
+                    }
+                }
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -192,6 +253,8 @@ struct ContentView: View {
                     )
                 }
                 
+
+                
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         showCreateAlbumSheet = true
@@ -205,7 +268,8 @@ struct ContentView: View {
 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     // [연결] trashAssets 개수를 버튼에 반영
-                    TrashBucketButton(count: trashAssets.count) {
+                    TrashBucketButton(count: photoManager.trashAssets.count) {
+                        print("ZAKAR Log: ContentView - Opening trash view, trashAssets count: \(photoManager.trashAssets.count)")
                         showTrashView = true
                     }
                 }
@@ -215,10 +279,10 @@ struct ContentView: View {
                 CleanUpView(photos: selectedPhotosForClean,
                             startIndex: startPosition,
                             isPresented: $isCleanModeActive,
-                            trashAlbum: Binding(get: { trashAssets }, set: { newValue in
-                                trashAssets = newValue
-                                saveTrashIdentifiers(from: newValue)
-                            }),
+                            trashAlbum: Binding(
+                                get: { photoManager.trashAssets },
+                                set: { photoManager.trashAssets = $0; photoManager.saveTrash() }
+                            ),
                             photoManager: photoManager,
                             onFinishGroup: {
                                 // 그룹 정리 완료 시 다음 그룹으로 자동 이동
@@ -229,10 +293,13 @@ struct ContentView: View {
             // [해결] TrashView 생성자 에러 수정: trashAssets 바인딩과 photoManager 주입
             .sheet(isPresented: $showTrashView) {
                 // 삭제 성공 시 photoManager를 통해 목록을 새로고침하는 콜백 추가
-                TrashView(trashAssets: Binding(get: { trashAssets }, set: { newValue in
-                    trashAssets = newValue
-                    saveTrashIdentifiers(from: newValue)
-                }), photoManager: photoManager) {
+                TrashView(
+                    trashAssets: Binding(
+                        get: { photoManager.trashAssets },
+                        set: { photoManager.trashAssets = $0; photoManager.saveTrash() }
+                    ),
+                    photoManager: photoManager
+                ) {
                     photoManager.fetchPhotos()
                 }
             }
@@ -263,14 +330,37 @@ struct ContentView: View {
                     .navigationBarTitleDisplayMode(.inline)
                 }
             }
+            .alert("대표 사진 자동 선택", isPresented: $showAutoCleanDialog) {
+                Button("취소", role: .cancel) { }
+                Button("시작", role: .destructive) {
+                    performAutoClean()
+                }
+            } message: {
+                let groupCount = photoManager.groupedPhotos.count
+                let totalPhotos = photoManager.groupedPhotos.flatMap { $0 }.count
+                let estimatedRemoved = totalPhotos - groupCount
+                
+                Text("""
+                \(groupCount)개 그룹에서 대표 사진을 자동으로 선택합니다.
+                
+                • 유지: 약 \(groupCount)장
+                • 휴지통 이동: 약 \(estimatedRemoved)장
+                
+                선택 기준:
+                1. 즐겨찾기 우선
+                2. 학습된 사용자 취향
+                3. 고화질 & 최신 사진
+                """)
+            }
             .onAppear {
                 self.selectedTab = initialTabParam
 
                 // 연/월 필터가 있으면 무조건 새로 fetch
                 if filterYear != nil || filterMonth != nil {
                     photoManager.fetchPhotos(year: filterYear, month: filterMonth)
-                } else if photoManager.allPhotos.isEmpty && !photoManager.isLoadingList {
-                    // 사진이 아직 없고 로딩 중도 아닐 때만 fetch
+                } else {
+                    // 필터 없는 경우 항상 fetch 시도
+                    // (PhotoManager 내부 최적화로 이미 전체 사진이 올바르게 로드된 경우 자동 스킵)
                     photoManager.fetchPhotos()
                 }
 
@@ -284,7 +374,14 @@ struct ContentView: View {
                     showTutorialOverlay = true
                     UserDefaults.standard.set(true, forKey: "ZAKAR_TutorialShown")
                 }
-                loadPersistedTrash()
+                photoManager.loadTrash()
+            }
+            .onDisappear {
+                // 필터링된 뷰에서 벗어날 때 리소스 정리
+                if filterYear != nil || filterMonth != nil {
+                    print("ZAKAR Log: ContentView - onDisappear, resetting analysis state for filtered view")
+                    photoManager.resetAnalysisState()
+                }
             }
             .onChange(of: selectedTab) { _, newValue in
                 if newValue == 0 {
@@ -298,7 +395,8 @@ struct ContentView: View {
                         print("ZAKAR Log: Auto-retry detected - photoIndex: \(retry.photoIndex), groupIndex: \(String(describing: retry.groupIndex))")
                         
                         // 0.3초 후 재시도 (데이터 로딩 대기)
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        Task {
+                            try? await Task.sleep(nanoseconds: 300_000_000)
                             self.pendingCleanModeRetry = nil
                             self.openCleanMode(at: retry.photoIndex, groupIndex: retry.groupIndex)
                         }
@@ -307,7 +405,8 @@ struct ContentView: View {
             }
             // CleanUpView에서 보낸 신호를 받아 휴지통 화면을 띄움
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("OpenTrash"))) { _ in
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                Task {
+                    try? await Task.sleep(nanoseconds: 300_000_000)
                     self.showTrashView = true
                 }
             }
@@ -388,7 +487,7 @@ struct ContentView: View {
                 print("ZAKAR Log: Pre-fetch failed or returned nil")
             }
             // Open CleanUpView after pre-fetch completes (or fails)
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self.isCleanModeActive = true
             }
         }
@@ -408,7 +507,8 @@ struct ContentView: View {
             print("ZAKAR Log: 다음 그룹 사진 개수: \(photoManager.groupedPhotos[nextIndex].count)")
             
             // 짧은 delay 후 다음 그룹 열기
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            Task {
+                try? await Task.sleep(nanoseconds: 200_000_000)
                 // openCleanMode를 사용하여 다음 그룹 열기
                 self.openCleanMode(at: 0, groupIndex: nextIndex)
             }
@@ -419,18 +519,17 @@ struct ContentView: View {
         }
     }
     
-    private func loadPersistedTrash() {
-        let ids = LocalDB.shared.loadTrashIdentifiers()
-        guard !ids.isEmpty else { self.trashAssets = []; return }
-        let fetch = PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil)
-        var temp: [PHAsset] = []
-        fetch.enumerateObjects { asset, _, _ in temp.append(asset) }
-        self.trashAssets = temp
-    }
-
-    private func saveTrashIdentifiers(from assets: [PHAsset]) {
-        let ids = assets.map { $0.localIdentifier }
-        LocalDB.shared.saveTrashIdentifiers(ids)
+    /// 모든 유사 그룹에서 대표 사진 자동 선택
+    private func performAutoClean() {
+        let result = photoManager.autoCleanAllGroups()
+        
+        // 휴지통 목록 새로고침
+        photoManager.loadTrash()
+        
+        // 사진 목록 새로고침
+        photoManager.fetchPhotos()
+        
+        print("ZAKAR Log: Auto-clean completed - kept: \(result.keptCount), removed: \(result.removedCount)")
     }
 }
 

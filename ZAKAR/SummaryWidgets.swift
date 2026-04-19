@@ -34,7 +34,7 @@ struct HomeSummaryCard: View {
                     icon: "calendar",
                     title: "최근 정리",
                     value: lastCleanupText,
-                    color: AppTheme.dawnPurple
+                    color: AppTheme.lightPurple
                 )
 
                 summaryDivider
@@ -43,7 +43,7 @@ struct HomeSummaryCard: View {
                     icon: "internaldrive",
                     title: "절감(추정)",
                     value: savedText,
-                    color: AppTheme.softMint
+                    color: AppTheme.gracefulGold
                 )
             }
         }

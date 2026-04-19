@@ -9,7 +9,7 @@ struct AlbumsView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                AppTheme.backgroundGradient.ignoresSafeArea()
+                PremiumBackground(style: .cool)
                 
                 ScrollView {
                     VStack(spacing: 18) {
@@ -28,7 +28,7 @@ struct AlbumsView: View {
                                             albumCard(
                                                 icon: "folder.fill",
                                                 title: collection.localizedTitle ?? "앨범",
-                                                gradient: AppTheme.goldenGradient,
+                                                gradient: AppTheme.gracefulGold,
                                                 count: getAssetCount(for: collection)
                                             )
                                         }
@@ -53,7 +53,7 @@ struct AlbumsView: View {
                                             albumCard(
                                                 icon: "folder",
                                                 title: collection.localizedTitle ?? "앨범",
-                                                gradient: AppTheme.purpleGradient,
+                                                gradient: AppTheme.lightPurple,
                                                 count: getAssetCount(for: collection)
                                             )
                                         }
@@ -81,7 +81,7 @@ struct AlbumsView: View {
         .onAppear { requestAndFetch() }
     }
     
-    private func albumCard(icon: String, title: String, gradient: LinearGradient, count: Int) -> some View {
+    private func albumCard(icon: String, title: String, gradient: Color, count: Int) -> some View {
         HStack(spacing: 14) {
             Image(systemName: icon)
                 .font(.system(size: 18, weight: .semibold))
@@ -161,7 +161,7 @@ struct AlbumDetailView: View {
 
     var body: some View {
         ZStack {
-            AppTheme.backgroundGradient.ignoresSafeArea()
+            PremiumBackground(style: .cool)
             
             ScrollView {
                 LazyVGrid(columns: grid, spacing: 2) {

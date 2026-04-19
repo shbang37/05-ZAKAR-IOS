@@ -22,9 +22,8 @@ struct PhotoSelectionView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                // 배경 (은혜의교회 퍼플)
-                AppTheme.mainPurple
-                    .ignoresSafeArea()
+                // Premium background
+                PremiumBackground(style: .warm)
                 
                 VStack(spacing: 0) {
                         // 상단 안내 및 선택 카운트
@@ -203,8 +202,7 @@ struct PhotoSelectionView: View {
     private var uploadConfirmationView: some View {
         NavigationView {
             ZStack {
-                AppTheme.mainPurple
-                    .ignoresSafeArea()
+                PremiumBackground(style: .warm)
                 
                 ScrollView {
                     VStack(spacing: 20) {

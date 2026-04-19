@@ -64,7 +64,10 @@ struct TrashBucketButton: View {
     @State private var scale: CGFloat = 1.0
 
     var body: some View {
-        Button(action: action) {
+        Button(action: {
+            print("ZAKAR Log: TrashBucketButton clicked, count: \(count)")
+            action()
+        }) {
             HStack(spacing: 5) {
                 Image(systemName: count > 0 ? "trash.fill" : "trash")
                     .font(.system(size: 15, weight: .semibold))
@@ -88,7 +91,8 @@ struct TrashBucketButton: View {
         }
         .onChange(of: count) { _, _ in
             withAnimation(.spring(response: 0.28, dampingFraction: 0.45)) { scale = 1.22 }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            Task {
+                try? await Task.sleep(nanoseconds: 120_000_000)
                 withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) { scale = 1.0 }
             }
         }
@@ -129,7 +133,7 @@ struct AssetThumbnail: View {
         options.isNetworkAccessAllowed = true
         let targetSize = CGSize(width: size * displayScale, height: size * displayScale)
         manager.requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFill, options: options) { img, _ in
-            DispatchQueue.main.async { self.image = img }
+            Task { @MainActor in self.image = img }
         }
     }
 }
@@ -143,16 +147,21 @@ struct TrashView: View {
     @State private var selectedAssets: Set<PHAsset> = []
 
     var body: some View {
+        let _ = print("ZAKAR Log: TrashView opened with \(trashAssets.count) items")
         NavigationView {
             ZStack {
                 Color.black.ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    if trashAssets.isEmpty {
-                        emptyState
-                    } else {
-                        photoGrid
+                    Group {
+                        if trashAssets.isEmpty {
+                            emptyState
+                        } else {
+                            photoGrid
+                        }
                     }
+                    .frame(maxHeight: .infinity)
+                    
                     actionBar
                 }
             }
@@ -244,7 +253,9 @@ struct TrashView: View {
 
             let deleteLabel = selectedAssets.isEmpty ? "전체 삭제" : "선택 삭제 (\(selectedAssets.count))"
             Button(deleteLabel) {
+                print("ZAKAR Log: TrashView - Delete button clicked, targets count: \(targets.count)")
                 photoManager.deleteAssets(targets) { success in
+                    print("ZAKAR Log: TrashView - Delete result: \(success)")
                     if success {
                         trashAssets.removeAll { targets.contains($0) }
                         selectedAssets.removeAll()
@@ -266,18 +277,100 @@ struct TrashView: View {
     }
 }
 
-// MARK: - 5. 공용 글래스 카드 배경 (은혜의 새벽 테마)
+// MARK: - 4. Premium Background Gradient
+struct PremiumBackground: View {
+    var style: BackgroundStyle = .warm
+    
+    enum BackgroundStyle {
+        case warm       // 골든-코랄 따뜻한 배경
+        case cool       // 퍼플-시안 시원한 배경
+        case deep       // 깊은 퍼플 배경
+    }
+    
+    var body: some View {
+        ZStack {
+            // Base gradient
+            baseGradient
+                .ignoresSafeArea()
+            
+            // Radial overlay for depth
+            RadialGradient(
+                colors: [
+                    Color.clear,
+                    overlayColor
+                ],
+                center: .center,
+                startRadius: 100,
+                endRadius: 600
+            )
+            .ignoresSafeArea()
+            .blendMode(.multiply)
+            .opacity(0.6)
+        }
+    }
+    
+    private var baseGradient: LinearGradient {
+        switch style {
+        case .warm:
+            return LinearGradient(
+                colors: [
+                    AppTheme.deepPurple,
+                    AppTheme.midPurple,
+                    AppTheme.goldenRose.opacity(0.12)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .cool:
+            return LinearGradient(
+                colors: [
+                    AppTheme.deepPurple,
+                    AppTheme.midPurple,
+                    AppTheme.lavender.opacity(0.10)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .deep:
+            return LinearGradient(
+                colors: [
+                    AppTheme.deepPurple,
+                    AppTheme.midPurple
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+    }
+    
+    private var overlayColor: Color {
+        switch style {
+        case .warm:
+            return AppTheme.goldenRose.opacity(0.25)
+        case .cool:
+            return AppTheme.lavender.opacity(0.20)
+        case .deep:
+            return AppTheme.deepPurple.opacity(0.5)
+        }
+    }
+}
+
+// MARK: - 5. Premium Liquid Glass Card
 struct GlassCard: View {
     var cornerRadius: CGFloat = 20
+    var style: GlassStyle = .premium
 
+    enum GlassStyle {
+        case premium    // 골든-코랄 따뜻한 느낌
+        case cool       // 퍼플-시안 쿨톤 느낌
+        case subtle     // 미묘한 퍼플
+    }
+    
     var body: some View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             .fill(
                 LinearGradient(
-                    colors: [
-                        AppTheme.dawnPurple.opacity(0.08),
-                        AppTheme.dawnPurple.opacity(0.04)
-                    ],
+                    colors: gradientColors,
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
@@ -288,20 +381,74 @@ struct GlassCard: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(
-                        LinearGradient(
-                            colors: [
-                                AppTheme.gracefulGold.opacity(0.35),
-                                AppTheme.dawnPurple.opacity(0.30),
-                                AppTheme.gracefulGold.opacity(0.15)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1.0
-                    )
+                    .stroke(borderGradient, lineWidth: 1.0)
             )
-            .shadow(color: AppTheme.dawnPurple.opacity(0.15), radius: 20, x: 0, y: 8)
-            .shadow(color: .black.opacity(0.25), radius: 15, x: 0, y: 6)
+            .shadow(color: shadowColor, radius: 20, x: 0, y: 8)
+            .shadow(color: .black.opacity(0.2), radius: 12, x: 0, y: 4)
+    }
+    
+    private var gradientColors: [Color] {
+        switch style {
+        case .premium:
+            return [
+                AppTheme.gracefulGold.opacity(0.12),
+                AppTheme.goldenRose.opacity(0.08)
+            ]
+        case .cool:
+            return [
+                AppTheme.lightPurple.opacity(0.12),
+                AppTheme.lavender.opacity(0.08)
+            ]
+        case .subtle:
+            return [
+                AppTheme.midPurple.opacity(0.15),
+                AppTheme.deepPurple.opacity(0.10)
+            ]
+        }
+    }
+    
+    private var borderGradient: LinearGradient {
+        switch style {
+        case .premium:
+            return LinearGradient(
+                colors: [
+                    AppTheme.gracefulGold.opacity(0.5),
+                    AppTheme.goldenRose.opacity(0.4),
+                    AppTheme.lavender.opacity(0.3)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .cool:
+            return LinearGradient(
+                colors: [
+                    AppTheme.lavender.opacity(0.5),
+                    AppTheme.lightPurple.opacity(0.4),
+                    AppTheme.gracefulGold.opacity(0.3)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .subtle:
+            return LinearGradient(
+                colors: [
+                    Color.white.opacity(0.2),
+                    Color.white.opacity(0.1)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+    }
+    
+    private var shadowColor: Color {
+        switch style {
+        case .premium:
+            return AppTheme.goldenRoseShadow(opacity: 0.15)
+        case .cool:
+            return AppTheme.lavenderShadow(opacity: 0.12)
+        case .subtle:
+            return AppTheme.purpleShadow(opacity: 0.1)
+        }
     }
 }
