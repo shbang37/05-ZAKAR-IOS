@@ -38,8 +38,8 @@ struct SimilarityGroupRow: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
-                    ForEach(0..<group.count, id: \.self) { index in
-                        AssetThumbnail(asset: group[index], size: 96)
+                    ForEach(Array(group.enumerated()), id: \.element.localIdentifier) { index, asset in
+                        AssetThumbnail(asset: asset, size: 96)
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -104,6 +104,7 @@ struct AssetThumbnail: View {
     let asset: PHAsset
     let size: CGFloat
     @State private var image: UIImage?
+    @State private var requestID: PHImageRequestID?
     @Environment(\.displayScale) var displayScale
 
     var body: some View {
@@ -123,17 +124,39 @@ struct AssetThumbnail: View {
         }
         .frame(width: size, height: size)
         .clipped()
+        // scaledToFill로 프레임 밖까지 퍼진 이미지가 옆 셀의 터치를 가로채지 않도록
+        // 터치 영역을 셀 프레임으로 제한 (.clipped()는 그리기만 자르고 히트테스트는 안 자름)
+        .contentShape(Rectangle())
         .onAppear { requestThumbnail() }
+        // 셀이 재사용되어 다른 asset이 들어오면 즉시 새 썸네일 로드
+        .onChange(of: asset.localIdentifier) { _, _ in
+            image = nil
+            requestThumbnail()
+        }
+        .onDisappear {
+            if let rid = requestID {
+                PHImageManager.default().cancelImageRequest(rid)
+                requestID = nil
+            }
+        }
     }
 
     private func requestThumbnail() {
+        if let rid = requestID {
+            PHImageManager.default().cancelImageRequest(rid)
+        }
         let manager = PHImageManager.default()
         let options = PHImageRequestOptions()
         options.deliveryMode = .opportunistic
         options.isNetworkAccessAllowed = true
         let targetSize = CGSize(width: size * displayScale, height: size * displayScale)
-        manager.requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFill, options: options) { img, _ in
-            Task { @MainActor in self.image = img }
+        // 요청 시점의 asset을 기억해서, 늦게 도착한 콜백이 교체된 셀을 덮어쓰지 않게 함
+        let requestedID = asset.localIdentifier
+        requestID = manager.requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFill, options: options) { img, _ in
+            Task { @MainActor in
+                guard self.asset.localIdentifier == requestedID else { return }
+                self.image = img
+            }
         }
     }
 }
@@ -144,10 +167,11 @@ struct TrashView: View {
     @ObservedObject var photoManager: PhotoManager
     var onDeleteSuccess: () -> Void
     @Environment(\.dismiss) var dismiss
-    @State private var selectedAssets: Set<PHAsset> = []
+    // PHAsset 포인터 동일성 문제를 피하기 위해 localIdentifier로 선택 상태 관리
+    @State private var selectedIDs: Set<String> = []
+    @State private var showDeleteError = false
 
     var body: some View {
-        let _ = print("ZAKAR Log: TrashView opened with \(trashAssets.count) items")
         NavigationView {
             ZStack {
                 Color.black.ignoresSafeArea()
@@ -161,7 +185,7 @@ struct TrashView: View {
                         }
                     }
                     .frame(maxHeight: .infinity)
-                    
+
                     actionBar
                 }
             }
@@ -175,17 +199,22 @@ struct TrashView: View {
                 }
                 if !trashAssets.isEmpty {
                     ToolbarItem(placement: .navigationBarTrailing) {
-                        Button(selectedAssets.count == trashAssets.count ? "전체 해제" : "전체 선택") {
-                            if selectedAssets.count == trashAssets.count {
-                                selectedAssets.removeAll()
+                        Button(selectedIDs.count == trashAssets.count ? "전체 해제" : "전체 선택") {
+                            if selectedIDs.count == trashAssets.count {
+                                selectedIDs.removeAll()
                             } else {
-                                selectedAssets = Set(trashAssets)
+                                selectedIDs = Set(trashAssets.map { $0.localIdentifier })
                             }
                         }
                         .font(.system(size: 14))
                         .foregroundColor(.white.opacity(0.8))
                     }
                 }
+            }
+            .alert("삭제 실패", isPresented: $showDeleteError) {
+                Button("확인", role: .cancel) { }
+            } message: {
+                Text("사진을 삭제하지 못했습니다. 사진 라이브러리 접근 권한을 확인해주세요.")
             }
         }
     }
@@ -206,7 +235,8 @@ struct TrashView: View {
         ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 4)], spacing: 4) {
                 ForEach(trashAssets, id: \.localIdentifier) { asset in
-                    let isSelected = selectedAssets.contains(asset)
+                    // localIdentifier 기반 선택 체크 (포인터 동일성 문제 방지)
+                    let isSelected = selectedIDs.contains(asset.localIdentifier)
                     ZStack(alignment: .topTrailing) {
                         AssetThumbnail(asset: asset, size: 110)
                             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -217,8 +247,8 @@ struct TrashView: View {
                             .opacity(isSelected ? 0.75 : 1.0)
                             .onTapGesture {
                                 withAnimation(.easeInOut(duration: 0.15)) {
-                                    if isSelected { selectedAssets.remove(asset) }
-                                    else { selectedAssets.insert(asset) }
+                                    if isSelected { selectedIDs.remove(asset.localIdentifier) }
+                                    else { selectedIDs.insert(asset.localIdentifier) }
                                 }
                             }
 
@@ -236,12 +266,16 @@ struct TrashView: View {
 
     private var actionBar: some View {
         HStack(spacing: 10) {
-            let targets = selectedAssets.isEmpty ? trashAssets : Array(selectedAssets)
-            let label = selectedAssets.isEmpty ? "전체 복구" : "선택 복구 (\(selectedAssets.count))"
+            let hasSelection = !selectedIDs.isEmpty
+            let restoreLabel = hasSelection ? "선택 복구 (\(selectedIDs.count))" : "전체 복구"
 
-            Button(label) {
-                trashAssets.removeAll { targets.contains($0) }
-                selectedAssets.removeAll()
+            Button(restoreLabel) {
+                // 탭 시점에 현재 상태로 대상 계산 (렌더 시점 캡처 문제 방지)
+                let idsToRemove = hasSelection
+                    ? selectedIDs
+                    : Set(trashAssets.map { $0.localIdentifier })
+                trashAssets.removeAll { idsToRemove.contains($0.localIdentifier) }
+                selectedIDs.removeAll()
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
@@ -251,16 +285,29 @@ struct TrashView: View {
             .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(Color.white.opacity(0.15), lineWidth: 0.5))
             .disabled(trashAssets.isEmpty)
 
-            let deleteLabel = selectedAssets.isEmpty ? "전체 삭제" : "선택 삭제 (\(selectedAssets.count))"
+            let deleteLabel = hasSelection ? "선택 삭제 (\(selectedIDs.count))" : "전체 삭제"
             Button(deleteLabel) {
-                print("ZAKAR Log: TrashView - Delete button clicked, targets count: \(targets.count)")
+                // 탭 시점에 현재 trashAssets 기준으로 대상 재계산
+                let targets = hasSelection
+                    ? trashAssets.filter { selectedIDs.contains($0.localIdentifier) }
+                    : trashAssets
+                let targetIDs = Set(targets.map { $0.localIdentifier })
+
+                guard !targets.isEmpty else { return }
+                print("ZAKAR Log: TrashView - Delete \(targets.count)장 시작")
+
                 photoManager.deleteAssets(targets) { success in
                     print("ZAKAR Log: TrashView - Delete result: \(success)")
                     if success {
-                        trashAssets.removeAll { targets.contains($0) }
-                        selectedAssets.removeAll()
+                        // localIdentifier 기반 제거 (PHAsset 포인터 동일성 무관)
+                        trashAssets.removeAll { targetIDs.contains($0.localIdentifier) }
+                        selectedIDs.removeAll()
+                        // 휴지통 DB 동기화
+                        Task { @MainActor in photoManager.loadTrash() }
                         onDeleteSuccess()
                         if trashAssets.isEmpty { dismiss() }
+                    } else {
+                        showDeleteError = true
                     }
                 }
             }

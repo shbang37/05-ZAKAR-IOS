@@ -89,9 +89,10 @@ struct ContentView: View {
     
     @ViewBuilder
     private var similarGroupsList: some View {
+        let snapshot = photoManager.groupedPhotos
         LazyVStack(spacing: 16) {
-            ForEach(photoManager.groupedPhotos.indices, id: \.self) { groupIndex in
-                SimilarityGroupRow(group: photoManager.groupedPhotos[groupIndex]) { photoIndex in
+            ForEach(Array(snapshot.enumerated()), id: \.element.first?.localIdentifier) { groupIndex, group in
+                SimilarityGroupRow(group: group) { photoIndex in
                     openCleanMode(at: photoIndex, groupIndex: groupIndex)
                 }
                 .padding(12)
@@ -129,12 +130,15 @@ struct ContentView: View {
     }
     
     private var photoGrid: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 2)], spacing: 2) {
-            ForEach(photoManager.allPhotos.indices, id: \.self) { photoIndex in
+        let snapshot = photoManager.allPhotos
+        // id를 offset(위치)이 아닌 localIdentifier(사진 고유값)로 지정해야
+        // 필터 변경/삭제로 목록이 바뀔 때 셀이 이전 사진을 재사용하지 않음
+        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 2)], spacing: 2) {
+            ForEach(Array(snapshot.enumerated()), id: \.element.localIdentifier) { photoIndex, asset in
                 Button {
                     openCleanMode(at: photoIndex, groupIndex: nil)
                 } label: {
-                    AssetThumbnail(asset: photoManager.allPhotos[photoIndex], size: 125)
+                    AssetThumbnail(asset: asset, size: 125)
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.white.opacity(0.08), lineWidth: 0.8))
                         .shadow(color: Color.black.opacity(0.25), radius: 10, x: 0, y: 6)
@@ -145,8 +149,7 @@ struct ContentView: View {
     }
 
     var body: some View {
-        NavigationView {
-            ZStack {
+        ZStack {
                 PremiumBackground(style: .deep)
 
                 VStack(spacing: 0) {
@@ -206,9 +209,15 @@ struct ContentView: View {
                             showAutoCleanDialog = true
                         } label: {
                             HStack(spacing: 8) {
-                                Image(systemName: "sparkles")
-                                    .font(.system(size: 16, weight: .semibold))
-                                Text("대표만 남기기")
+                                if photoManager.isAutoCleaning {
+                                    ProgressView()
+                                        .tint(.black)
+                                        .scaleEffect(0.8)
+                                } else {
+                                    Image(systemName: "sparkles")
+                                        .font(.system(size: 16, weight: .semibold))
+                                }
+                                Text(photoManager.isAutoCleaning ? "대표 사진 고르는 중..." : "대표만 남기기")
                                     .font(.system(size: 16, weight: .semibold))
                             }
                             .foregroundColor(.black)
@@ -232,6 +241,7 @@ struct ContentView: View {
                         }
                         .padding(.bottom, 90) // 하단 탭바 위로 배치
                         .accessibilityLabel("대표 사진만 자동 선택")
+                        .disabled(photoManager.isAutoCleaning)
                     }
                 }
             }
@@ -300,7 +310,7 @@ struct ContentView: View {
                     ),
                     photoManager: photoManager
                 ) {
-                    photoManager.fetchPhotos()
+                    photoManager.fetchPhotos(force: true)
                 }
             }
             .sheet(isPresented: $showCreateAlbumSheet) {
@@ -374,7 +384,7 @@ struct ContentView: View {
                     showTutorialOverlay = true
                     UserDefaults.standard.set(true, forKey: "ZAKAR_TutorialShown")
                 }
-                photoManager.loadTrash()
+                Task { @MainActor in photoManager.loadTrash() }
             }
             .onDisappear {
                 // 필터링된 뷰에서 벗어날 때 리소스 정리
@@ -410,8 +420,7 @@ struct ContentView: View {
                     self.showTrashView = true
                 }
             }
-        }
-        .preferredColorScheme(.dark)
+            .preferredColorScheme(.dark)
     }
 
     private func openCleanMode(at photoIndex: Int, groupIndex: Int? = nil) {
@@ -519,17 +528,19 @@ struct ContentView: View {
         }
     }
     
-    /// 모든 유사 그룹에서 대표 사진 자동 선택
+    /// 모든 유사 그룹에서 대표 사진 자동 선택 (품질 분석 포함, 백그라운드 실행)
     private func performAutoClean() {
-        let result = photoManager.autoCleanAllGroups()
-        
-        // 휴지통 목록 새로고침
-        photoManager.loadTrash()
-        
-        // 사진 목록 새로고침
-        photoManager.fetchPhotos()
-        
-        print("ZAKAR Log: Auto-clean completed - kept: \(result.keptCount), removed: \(result.removedCount)")
+        Task {
+            let result = await photoManager.autoCleanAllGroups()
+
+            await MainActor.run {
+                // 휴지통 목록 및 사진 목록 새로고침
+                photoManager.loadTrash()
+                photoManager.fetchPhotos()
+            }
+
+            print("ZAKAR Log: Auto-clean completed - kept: \(result.keptCount), removed: \(result.removedCount)")
+        }
     }
 }
 

@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import Photos
 import Combine
+import Vision
 
 // MARK: - Album 정보 모델
 struct AlbumInfo: Identifiable, Hashable {
@@ -81,7 +82,37 @@ struct UserPreferences: Codable {
 }
 
 class PhotoManager: ObservableObject {
-    enum SimilarityPreset: Int { case light = 14, balanced = 18, strict = 22 }
+    /// 유사도 판별 프리셋 (하이브리드 2단계)
+    /// - phashConfirm 이하: pHash만으로 유사 확정 (빠름)
+    /// - phashConfirm 초과 ~ phashMaybe 이하: 경계 구간 → FeaturePrint 2차 검증
+    /// - featurePrintMax: 2차 검증 통과 기준 (작을수록 더 비슷해야 통과)
+    enum SimilarityPreset {
+        case light      // 느슨: 더 많은 사진을 유사로 묶음
+        case balanced
+        case strict     // 엄격: 확실한 것만
+
+        var phashConfirm: Int {
+            switch self {
+            case .light: return 12
+            case .balanced: return 10
+            case .strict: return 8
+            }
+        }
+        var phashMaybe: Int {
+            switch self {
+            case .light: return 18
+            case .balanced: return 16
+            case .strict: return 12
+            }
+        }
+        var featurePrintMax: Float {
+            switch self {
+            case .light: return 0.65
+            case .balanced: return 0.55
+            case .strict: return 0.45
+            }
+        }
+    }
     var similarityPreset: SimilarityPreset = .balanced
 
     @Published var allPhotos: [PHAsset] = []
@@ -89,12 +120,18 @@ class PhotoManager: ObservableObject {
     @Published var albums: [AlbumInfo] = []
     @Published var isLoadingList = false
     @Published var isAnalyzing = false
+    @Published var isAutoCleaning = false
     @Published var trashAssets: [PHAsset] = []
     private var didAnalyzeForCurrentList = false
     private var shouldAnalyzeAfterLoad = false
     
-    // 분석 성능 향상을 위한 캐시
+    // 분석 성능 향상을 위한 캐시 (NSLock으로 데이터 레이스 방어)
+    private let hashCacheLock = NSLock()
     private var hashCache: [String: UInt64] = [:]
+
+    // Vision FeaturePrint 캐시 (경계 구간 2차 검증용)
+    private let featurePrintCacheLock = NSLock()
+    private var featurePrintCache: [String: VNFeaturePrintObservation] = [:]
     
     // 동시 fetch 방지 플래그
     private var isFetching = false
@@ -107,22 +144,23 @@ class PhotoManager: ObservableObject {
     /// 필터 변경 시 분석 상태 및 캐시 초기화
     func resetAnalysisState() {
         print("ZAKAR Log: PhotoManager - resetAnalysisState called")
+        hashCacheLock.withLock { hashCache.removeAll() }
+        featurePrintCacheLock.withLock { featurePrintCache.removeAll() }
         Task { @MainActor in
-            self.hashCache.removeAll()
             self.didAnalyzeForCurrentList = false
             self.groupedPhotos = []
         }
     }
 
     // MARK: - 메인 로직: 사진 불러오기 (전체)
-    func fetchPhotos() {
-        fetchPhotos(year: nil, month: nil)
+    func fetchPhotos(force: Bool = false) {
+        fetchPhotos(year: nil, month: nil, force: force)
     }
 
     // MARK: - 메인 로직: 사진 불러오기 (연/월 필터 지원)
-    func fetchPhotos(year: Int?, month: Int?) {
-        // 동일한 필터로 이미 로드되어 있고 사진이 있으면 스킵
-        if !allPhotos.isEmpty && year == currentFilterYear && month == currentFilterMonth && !isFetching {
+    func fetchPhotos(year: Int?, month: Int?, force: Bool = false) {
+        // 동일한 필터로 이미 로드되어 있고 사진이 있으면 스킵 (force=true면 강제 새로고침)
+        if !force && !allPhotos.isEmpty && year == currentFilterYear && month == currentFilterMonth && !isFetching {
             print("ZAKAR Log: PhotoManager - Same filter already loaded with \(allPhotos.count) photos, skipping")
             return
         }
@@ -245,13 +283,14 @@ class PhotoManager: ObservableObject {
         Task { @MainActor in self.groupedPhotos = [] }
 
         Task(priority: .userInitiated) { [assets = self.allPhotos] in
-            self.analyzeGroupsProgressive(assets: assets)
+            await self.analyzeGroupsProgressive(assets: assets)
             await MainActor.run { self.isAnalyzing = false }
         }
     }
 
     // MARK: - 임시 휴지통 (공유 상태)
     /// LocalDB에서 휴지통 목록을 로드합니다. 앱 시작 및 뷰 진입 시 호출하세요.
+    @MainActor
     func loadTrash() {
         let ids = LocalDB.shared.loadTrashIdentifiers()
         guard !ids.isEmpty else { trashAssets = []; return }
@@ -286,9 +325,9 @@ class PhotoManager: ObservableObject {
                     print("ZAKAR Log: 사진 \(assets.count)장 삭제 성공")
                     // 삭제 통계를 LocalDB에 기록
                     self.recordCleanupStats(deletedCount: assets.count, savedMB: estimatedMB)
-                    // 사진 목록 재로드 및 재분석
+                    // 삭제 후 강제 새로고침 (스킵 최적화 우회)
                     self.shouldAnalyzeAfterLoad = true
-                    self.fetchPhotos()
+                    self.fetchPhotos(force: true)
                 } else {
                     print("ZAKAR Log: 사진 삭제 실패 또는 유저 거부: \(error?.localizedDescription ?? "알 수 없는 에러")")
                 }
@@ -310,128 +349,218 @@ class PhotoManager: ObservableObject {
 
     // MARK: - 분석 로직: 유사 사진 그룹화 (점진적 표시)
     // 그룹이 완성될 때마다 UI에 즉시 반영하여 첫 결과를 빠르게 표시합니다.
-    private func analyzeGroupsProgressive(assets: [PHAsset]) {
+    private func analyzeGroupsProgressive(assets: [PHAsset]) async {
         guard !assets.isEmpty else {
             print("ZAKAR Log: analyzeGroupsProgressive - no assets to analyze")
             return
         }
-        
+
         print("📸 ZAKAR Log: Starting analysis of \(assets.count) photos")
         var currentTimeGroup: [PHAsset] = []
 
         for asset in assets {
             guard let curDate = asset.creationDate else { continue }
-            
+
             // 시간 임계값: 7초
             if let last = currentTimeGroup.last,
                let lastDate = last.creationDate {
                 let timeDiff = abs(curDate.timeIntervalSince(lastDate))
-                
+
                 if timeDiff <= 7 {
                     currentTimeGroup.append(asset)
                 } else {
-                    flushTimeGroupIfReady(&currentTimeGroup)
+                    await flushTimeGroupIfReady(&currentTimeGroup)
                     currentTimeGroup = [asset]
                 }
             } else {
-                flushTimeGroupIfReady(&currentTimeGroup)
+                await flushTimeGroupIfReady(&currentTimeGroup)
                 currentTimeGroup = [asset]
             }
         }
-        flushTimeGroupIfReady(&currentTimeGroup)
+        await flushTimeGroupIfReady(&currentTimeGroup)
 
-        Task { @MainActor in
+        await MainActor.run {
             print("✅ ZAKAR Log: Analysis complete - \(self.groupedPhotos.count) similar groups found")
         }
     }
 
-    /// 시간 그룹을 시각적 유사도 필터링 후 main thread에 append합니다.
-    private func flushTimeGroupIfReady(_ group: inout [PHAsset]) {
+    /// 시간 그룹을 시각적 유사도로 클러스터링 후 main thread에 append합니다.
+    /// 한 시간 그룹 안에 서로 다른 유사 묶음이 여러 개 있으면 전부 감지됩니다.
+    private func flushTimeGroupIfReady(_ group: inout [PHAsset]) async {
         guard group.count >= 2 else { return }
-        let visualGroup = filterByVisualSimilarity(group: group)
-        if visualGroup.count >= 2 {
-            let result = visualGroup
-            Task { @MainActor in
-                self.groupedPhotos.append(result)
-            }
+        let clusters = await clusterByVisualSimilarity(group: group)
+        guard !clusters.isEmpty else { return }
+        await MainActor.run {
+            self.groupedPhotos.append(contentsOf: clusters)
         }
     }
 
     // 기존 호환성을 위해 유지 (외부에서 호출 안 함)
     private func analyzeGroups(assets: [PHAsset]) {
-        analyzeGroupsProgressive(assets: assets)
+        Task(priority: .userInitiated) { await self.analyzeGroupsProgressive(assets: assets) }
     }
 
-    private func filterByVisualSimilarity(group: [PHAsset]) -> [PHAsset] {
+    /// 시간 그룹 내 사진들을 union-find로 클러스터링합니다.
+    /// 1차: pHash 해밍거리로 빠르게 확정/기각
+    /// 2차: 경계 구간(confirm < d ≤ maybe)만 Vision FeaturePrint로 정밀 검증
+    private func clusterByVisualSimilarity(group: [PHAsset]) async -> [[PHAsset]] {
         guard group.count >= 2 else { return [] }
-        
-        // 모든 사진의 해시를 미리 계산
-        let hashes = group.map { getOrGenerateHash(for: $0) }
-        
-        // 해시 계산 실패 체크
-        let validHashes = hashes.filter { $0 != 0 }
-        if validHashes.count < 2 {
-            return []
+
+        // 그룹 내 모든 해시를 병렬로 계산
+        let hashes: [UInt64] = await withTaskGroup(of: (Int, UInt64).self) { taskGroup in
+            for (i, asset) in group.enumerated() {
+                taskGroup.addTask { (i, await self.getOrGenerateHash(for: asset)) }
+            }
+            var result = Array(repeating: UInt64(0), count: group.count)
+            for await (i, hash) in taskGroup {
+                result[i] = hash
+            }
+            return result
         }
-        
-        // 첫 번째 사진을 기준으로 시작
-        var resultGroup = [group[0]]
-        var usedIndices = Set<Int>([0])
-        
-        // 그룹에 포함된 사진들끼리 서로 유사한지 검증
-        for i in 1..<group.count {
-            var isSimilarToGroup = false
-            
-            // 이미 그룹에 포함된 사진들과 비교
-            for usedIndex in usedIndices {
-                let distance = hammingDistance(hashes[i], hashes[usedIndex])
-                
-                if distance <= similarityPreset.rawValue {
-                    isSimilarToGroup = true
-                    break
+
+        // 유효 해시(≠0) 사진이 2장 미만이면 그룹 없음
+        guard hashes.filter({ $0 != 0 }).count >= 2 else { return [] }
+
+        // Union-Find
+        var parent = Array(0..<group.count)
+        func find(_ x: Int) -> Int {
+            var x = x
+            while parent[x] != x {
+                parent[x] = parent[parent[x]]  // 경로 압축
+                x = parent[x]
+            }
+            return x
+        }
+        func union(_ a: Int, _ b: Int) {
+            let ra = find(a), rb = find(b)
+            if ra != rb { parent[ra] = rb }
+        }
+
+        let confirmT = similarityPreset.phashConfirm
+        let maybeT = similarityPreset.phashMaybe
+        let fpMax = similarityPreset.featurePrintMax
+
+        for i in 0..<group.count {
+            guard hashes[i] != 0 else { continue }
+            for j in (i + 1)..<group.count {
+                guard hashes[j] != 0 else { continue }
+                guard find(i) != find(j) else { continue }  // 이미 같은 클러스터
+
+                let d = hammingDistance(hashes[i], hashes[j])
+                if d <= confirmT {
+                    union(i, j)
+                } else if d <= maybeT {
+                    // 경계 구간: FeaturePrint 2차 검증 (신경망 임베딩 거리)
+                    if let fpDist = await featurePrintDistance(group[i], group[j]) {
+                        print("ZAKAR Log: 경계 검증 - pHash d=\(d), FeaturePrint d=\(String(format: "%.3f", fpDist)) → \(fpDist <= fpMax ? "유사" : "비유사")")
+                        if fpDist <= fpMax {
+                            union(i, j)
+                        }
+                    }
                 }
             }
-            
-            if isSimilarToGroup {
-                resultGroup.append(group[i])
-                usedIndices.insert(i)
+        }
+
+        // 클러스터 수집 (2장 이상만)
+        var clusterMap: [Int: [PHAsset]] = [:]
+        for i in 0..<group.count where hashes[i] != 0 {
+            clusterMap[find(i), default: []].append(group[i])
+        }
+        return clusterMap.values
+            .filter { $0.count >= 2 }
+            .sorted { ($0.first?.creationDate ?? .distantPast) > ($1.first?.creationDate ?? .distantPast) }
+    }
+
+    // MARK: - Vision FeaturePrint (2차 검증)
+
+    /// 두 사진의 FeaturePrint 거리를 계산합니다. 실패 시 nil (검증 불가 → 유사로 묶지 않음)
+    private func featurePrintDistance(_ a: PHAsset, _ b: PHAsset) async -> Float? {
+        guard let fpA = await getOrGenerateFeaturePrint(for: a),
+              let fpB = await getOrGenerateFeaturePrint(for: b) else { return nil }
+        var distance: Float = 0
+        do {
+            try fpA.computeDistance(&distance, to: fpB)
+            return distance
+        } catch {
+            print("ZAKAR Log: FeaturePrint 거리 계산 실패 - \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private func getOrGenerateFeaturePrint(for asset: PHAsset) async -> VNFeaturePrintObservation? {
+        let key = asset.localIdentifier
+        if let cached = featurePrintCacheLock.withLock({ featurePrintCache[key] }) {
+            return cached
+        }
+
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .fastFormat
+        options.isNetworkAccessAllowed = true
+        options.resizeMode = .fast
+
+        let image: UIImage? = await withCheckedContinuation { cont in
+            var didResume = false
+            PHImageManager.default().requestImage(
+                for: asset,
+                targetSize: CGSize(width: 360, height: 360),
+                contentMode: .aspectFill,
+                options: options
+            ) { img, _ in
+                guard !didResume else { return }
+                didResume = true
+                cont.resume(returning: img)
             }
         }
-        
-        // 최소 2장 이상만 반환
-        return resultGroup.count >= 2 ? resultGroup : []
+        guard let cgImage = image?.cgImage else { return nil }
+
+        let request = VNGenerateImageFeaturePrintRequest()
+        // 리비전 고정: OS 버전에 따라 거리 스케일이 달라지는 것을 방지 (임계값 일관성)
+        request.revision = VNGenerateImageFeaturePrintRequestRevision1
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        do {
+            try handler.perform([request])
+            guard let observation = request.results?.first else { return nil }
+            featurePrintCacheLock.withLock { featurePrintCache[key] = observation }
+            return observation
+        } catch {
+            print("ZAKAR Log: FeaturePrint 생성 실패 - \(error.localizedDescription)")
+            return nil
+        }
     }
 
     // MARK: - pHash Helper Methods
-    private func getOrGenerateHash(for asset: PHAsset) -> UInt64 {
-        if let cached = hashCache[asset.localIdentifier] { return cached }
-        
-        // 타임스탬프 기반 빠른 해시 생성 (메모리 부담 감소)
-        let fallbackHash: UInt64
-        if let date = asset.creationDate {
-            fallbackHash = UInt64(date.timeIntervalSince1970 * 1000000)
-        } else {
-            fallbackHash = UInt64.random(in: 1...UInt64.max)
+    private func getOrGenerateHash(for asset: PHAsset) async -> UInt64 {
+        let key = asset.localIdentifier
+        if let cached = hashCacheLock.withLock({ hashCache[key] }) {
+            return cached
         }
-        
-        let manager = PHImageManager.default()
+
         let options = PHImageRequestOptions()
-        options.isSynchronous = false  // 비동기로 변경하여 메인 스레드 블로킹 방지
+        // isSynchronous=false + withCheckedContinuation: cooperative thread pool에서 안전
         options.deliveryMode = .fastFormat
-        options.isNetworkAccessAllowed = false
+        options.isNetworkAccessAllowed = true   // iCloud 사진도 해시 계산 가능하게
         options.resizeMode = .fast
-        
-        var generatedHash: UInt64 = fallbackHash
-        
-        // 작은 이미지만 요청하여 메모리 부담 최소화
-        manager.requestImage(for: asset, targetSize: CGSize(width: 16, height: 16), contentMode: .aspectFill, options: options) { image, info in
-            if let img = image, let hash = self.calculatePHashSafe(img) {
-                generatedHash = hash
+
+        let computedHash: UInt64 = await withCheckedContinuation { cont in
+            var didResume = false
+            PHImageManager.default().requestImage(
+                for: asset,
+                targetSize: CGSize(width: 32, height: 32),
+                contentMode: .aspectFill,
+                options: options
+            ) { image, _ in
+                guard !didResume else { return }
+                didResume = true
+                let hash = image.flatMap { self.calculatePHashSafe($0) } ?? 0
+                cont.resume(returning: hash)
             }
         }
-        
-        hashCache[asset.localIdentifier] = generatedHash
-        return generatedHash
+
+        // hash=0 이면 이미지 로드 실패 → 캐시 저장 안 함 (다음 호출에서 재시도)
+        if computedHash != 0 {
+            hashCacheLock.withLock { hashCache[key] = computedHash }
+        }
+        return computedHash
     }
     
     private func calculatePHashSafe(_ image: UIImage) -> UInt64? {
@@ -712,63 +841,70 @@ class PhotoManager: ObservableObject {
         print("ZAKAR Log: ML - Recorded user choice. Total data: \(prefs.keptPhotos.count)")
     }
     
-    /// 대표 사진 선택 (ML 활용)
-    func selectBestPhoto(from group: [PHAsset]) -> PHAsset? {
+    /// 대표 사진 선택
+    /// 1순위: 즐겨찾기 / 2순위: 품질 점수(선명도·얼굴·미학) + 학습된 취향 가중 합산
+    func selectBestPhoto(from group: [PHAsset]) async -> PHAsset? {
         guard !group.isEmpty else { return nil }
-        
+
         // 1순위: 즐겨찾기
         if let favorite = group.first(where: { $0.isFavorite }) {
             print("ZAKAR Log: Selected favorite photo")
             return favorite
         }
-        
+
         let prefs = userPreferences
-        
-        // 2순위: ML 학습 데이터 활용 (데이터 충분시)
-        if prefs.hasEnoughData {
-            print("ZAKAR Log: Using ML to select best photo (data: \(prefs.keptPhotos.count))")
-            return selectBestPhotoWithML(from: group, preferences: prefs)
+        let useML = prefs.hasEnoughData
+
+        var best: (asset: PHAsset, score: Double)? = nil
+        for asset in group {
+            let quality = await PhotoQualityScorer.shared.score(for: asset)
+            // 품질이 주 신호(70%), 취향은 보조(30%) — 학습 데이터 부족 시 품질 100%
+            let total = useML
+                ? quality * 0.7 + preferenceScore(for: asset, preferences: prefs) * 0.3
+                : quality
+            if best == nil || total > best!.score {
+                best = (asset, total)
+            }
         }
-        
-        // 3순위: 기본 로직 (고화질 상위 30% 중 최근)
-        print("ZAKAR Log: Using default logic (insufficient ML data)")
+
+        if let best = best {
+            print("ZAKAR Log: Selected best photo - score: \(String(format: "%.2f", best.score)), ML: \(useML)")
+            return best.asset
+        }
+        // 품질 분석이 전부 실패한 경우 기존 기본 로직으로 폴백
         return selectBestPhotoDefault(from: group)
     }
-    
-    /// ML 기반 선택
-    private func selectBestPhotoWithML(from group: [PHAsset], preferences: UserPreferences) -> PHAsset? {
-        let scored = group.map { photo -> (photo: PHAsset, score: Double) in
-            let features = extractFeatures(from: photo)
-            var score = 0.0
-            
-            // 파일 크기 유사도 (40% 가중치)
-            if preferences.preferredFileSize > 0 {
-                let sizeDiff = abs(features.fileSize - preferences.preferredFileSize) / preferences.preferredFileSize
-                let sizeScore = max(0, 1.0 - sizeDiff)
-                score += sizeScore * 0.4
-            }
-            
-            // 해상도 유사도 (30% 가중치)
-            if preferences.preferredResolution > 0 {
-                let resDiff = abs(Double(features.resolution) - preferences.preferredResolution) / preferences.preferredResolution
-                let resScore = max(0, 1.0 - resDiff)
-                score += resScore * 0.3
-            }
-            
-            // 방향 선호도 (20% 가중치)
-            if features.isLandscape == preferences.prefersLandscape {
-                score += 0.2
-            }
-            
-            // 시간대 선호도 (10% 가중치)
-            if preferences.preferredHours.contains(features.hourOfDay) {
-                score += 0.1
-            }
-            
-            return (photo, score)
+
+    /// 학습된 사용자 취향 점수 (0~1)
+    private func preferenceScore(for photo: PHAsset, preferences: UserPreferences) -> Double {
+        let features = extractFeatures(from: photo)
+        var score = 0.0
+
+        // 파일 크기 유사도 (40% 가중치)
+        if preferences.preferredFileSize > 0 {
+            let sizeDiff = abs(features.fileSize - preferences.preferredFileSize) / preferences.preferredFileSize
+            let sizeScore = max(0, 1.0 - sizeDiff)
+            score += sizeScore * 0.4
         }
-        
-        return scored.max(by: { $0.score < $1.score })?.photo
+
+        // 해상도 유사도 (30% 가중치)
+        if preferences.preferredResolution > 0 {
+            let resDiff = abs(Double(features.resolution) - preferences.preferredResolution) / preferences.preferredResolution
+            let resScore = max(0, 1.0 - resDiff)
+            score += resScore * 0.3
+        }
+
+        // 방향 선호도 (20% 가중치)
+        if features.isLandscape == preferences.prefersLandscape {
+            score += 0.2
+        }
+
+        // 시간대 선호도 (10% 가중치)
+        if preferences.preferredHours.contains(features.hourOfDay) {
+            score += 0.1
+        }
+
+        return score
     }
     
     /// 기본 선택 로직
@@ -787,30 +923,37 @@ class PhotoManager: ObservableObject {
         }
     }
     
-    /// 전체 그룹 자동 정리
-    func autoCleanAllGroups() -> (keptCount: Int, removedCount: Int) {
+    /// 전체 그룹 자동 정리 (품질 분석 포함이라 async)
+    func autoCleanAllGroups() async -> (keptCount: Int, removedCount: Int) {
+        // 스냅샷은 main에서 (@Published 안전 접근)
+        let groups = await MainActor.run { () -> [[PHAsset]] in
+            self.isAutoCleaning = true
+            return self.groupedPhotos
+        }
+
         var kept: [PHAsset] = []
         var removed: [PHAsset] = []
-        
-        for group in groupedPhotos {
-            if let best = selectBestPhoto(from: group) {
+
+        for group in groups {
+            if let best = await selectBestPhoto(from: group) {
                 kept.append(best)
                 let discarded = group.filter { $0 != best }
                 removed.append(contentsOf: discarded)
-                
+
                 // ML 학습 데이터 기록
                 recordUserChoice(kept: best, discarded: discarded)
             }
         }
-        
+
         // 휴지통으로 이동
         var currentTrash = LocalDB.shared.loadTrashIdentifiers()
         let removedIds = removed.map { $0.localIdentifier }
         currentTrash.append(contentsOf: removedIds)
         LocalDB.shared.saveTrashIdentifiers(currentTrash)
-        
-        print("ZAKAR Log: Auto-cleaned \(groupedPhotos.count) groups - kept: \(kept.count), removed: \(removed.count)")
-        
+
+        print("ZAKAR Log: Auto-cleaned \(groups.count) groups - kept: \(kept.count), removed: \(removed.count)")
+
+        await MainActor.run { self.isAutoCleaning = false }
         return (kept.count, removed.count)
     }
 }
