@@ -39,13 +39,14 @@ struct SimilarityGroupRow: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
                     ForEach(Array(group.enumerated()), id: \.element.localIdentifier) { index, asset in
+                        // 썸네일 개별 그림자 금지 — 행당 썸네일 수 × 행 수만큼
+                        // 오프스크린 렌더링이 쌓여 리스트 스크롤이 끊김
                         AssetThumbnail(asset: asset, size: 96)
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                                     .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
                             )
-                            .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
                             .onTapGesture { onImageTap(index) }
                     }
                 }
@@ -53,7 +54,25 @@ struct SimilarityGroupRow: View {
             }
         }
         .padding(16)
-        .background(GlassCard())
+        // GlassCard(Material 블러 + 그림자 2개)는 행마다 오프스크린 렌더링을 강제해
+        // 그룹이 수십 개일 때 스크롤이 끊김 — 동일 톤의 경량 배경으로 대체
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            AppTheme.gracefulGold.opacity(0.12),
+                            AppTheme.goldenRose.opacity(0.08)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(AppTheme.gracefulGold.opacity(0.25), lineWidth: 1.0)
+                )
+        )
     }
 }
 
@@ -115,11 +134,10 @@ struct AssetThumbnail: View {
                     .scaledToFill()
                     .transition(.opacity.animation(.easeIn(duration: 0.2)))
             } else {
+                // 로딩 플레이스홀더에 ProgressView 금지 — 빠른 스크롤 시
+                // 수십 개의 스피너 애니메이션이 동시에 돌며 프레임을 잡아먹음
                 Rectangle()
                     .fill(Color.white.opacity(0.06))
-                ProgressView()
-                    .tint(.white.opacity(0.4))
-                    .scaleEffect(0.6)
             }
         }
         .frame(width: size, height: size)

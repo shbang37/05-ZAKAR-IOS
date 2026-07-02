@@ -601,12 +601,17 @@ struct CleanUpView: View {
                 currentZoom = 1.0
                 totalZoom = 1.0
 
-                // 새 카드: 작은 스케일에서 앞으로 나오는 듯한 등장
-                imageOpacity = 0.0
-                imageScale = 0.88
-                withAnimation(.spring(response: 0.38, dampingFraction: 0.72)) {
+                if currentUIImage != nil {
+                    // 캐시 히트: 오버레이 카드가 이미 등장 애니메이션을 마치고 완전히 보이는 상태.
+                    // 메인 카드가 opacity 0에서 다시 페이드인하면 같은 사진이
+                    // "나타남→꺼짐→재등장"으로 깜빡이므로, 그대로 이어받는다.
                     imageOpacity = 1.0
                     imageScale = 1.0
+                } else {
+                    // 로딩 대기: 빈 상태로 페이드인하지 않고,
+                    // 이미지 도착 시점에 loadImgWithPreview가 등장 애니메이션을 실행
+                    imageOpacity = 0.0
+                    imageScale = 0.88
                 }
             }
         }
@@ -714,33 +719,52 @@ struct CleanUpView: View {
         // 캐시 히트 시 즉시 반환
         if let cached = imageCache[index] {
             print("ZAKAR Log: loadImgWithPreview - Cache hit for index \(index)")
-            if index == currentIndex { currentUIImage = cached }
+            if index == currentIndex {
+                currentUIImage = cached
+                if imageOpacity == 0 {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.72)) {
+                        imageOpacity = 1.0
+                        imageScale = 1.0
+                    }
+                }
+            }
             return
         }
         
         print("ZAKAR Log: loadImgWithPreview - Requesting image for index \(index)")
 
-        // 1단계: 고품질 프리뷰 (즉시 표시용)
-        let previewOptions = PHImageRequestOptions()
-        previewOptions.deliveryMode = .opportunistic  // 빠르지만 품질 좋은 이미지
-        previewOptions.isNetworkAccessAllowed = true
-        previewOptions.isSynchronous = false
-        previewOptions.resizeMode = .exact  // 정확한 리사이징으로 품질 향상
+        // opportunistic 한 번으로 저화질 프리뷰 → 최종 고화질까지 순차 배달됨.
+        // (기존에는 같은 크기로 highQualityFormat을 한 번 더 요청해 화면 교체가
+        //  한 번 더 일어났음 — 중복 요청 제거)
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .opportunistic
+        options.isNetworkAccessAllowed = true
+        options.isSynchronous = false
+        options.resizeMode = .exact  // 정확한 리사이징으로 품질 향상
 
-        PHImageManager.default().requestImage(
+        let reqID = PHImageManager.default().requestImage(
             for: asset,
             targetSize: CGSize(width: 340 * displayScale, height: 500 * displayScale),  // 표시 크기에 맞춤
             contentMode: .aspectFit,
-            options: previewOptions
+            options: options
         ) { img, info in
             if let img = img {
                 let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
                 print("ZAKAR Log: Preview callback - index \(index), isDegraded: \(isDegraded), size: \(img.size)")
                 Task { @MainActor in
-                    // 아직 고해상도가 없을 때만 저해상도로 채움
-                    if index == self.currentIndex, self.currentUIImage == nil {
-                        print("ZAKAR Log: Setting currentUIImage from preview - index \(index)")
-                        self.currentUIImage = img
+                    if index == self.currentIndex {
+                        // 저화질은 빈 화면일 때만 채우고, 최종본은 항상 반영
+                        if self.currentUIImage == nil || !isDegraded {
+                            self.currentUIImage = img
+                        }
+                        // 로딩을 기다리던 카드: 이미지가 도착한 시점에 등장 애니메이션
+                        // (advanceToNext가 opacity 0으로 대기시켜 둠)
+                        if self.imageOpacity == 0, self.currentUIImage != nil {
+                            withAnimation(.spring(response: 0.38, dampingFraction: 0.72)) {
+                                self.imageOpacity = 1.0
+                                self.imageScale = 1.0
+                            }
+                        }
                     }
                     // 최종본(isDegraded=false)이면 캐시에 저장
                     if !isDegraded {
@@ -749,36 +773,6 @@ struct CleanUpView: View {
                 }
             } else {
                 print("ZAKAR Log: Preview callback - index \(index), img is nil, info: \(String(describing: info))")
-            }
-        }
-
-        // 2단계: 표시 크기에 맞는 고해상도 (카드 340pt × 500pt 기준)
-        let hqOptions = PHImageRequestOptions()
-        hqOptions.deliveryMode = .highQualityFormat  // opportunistic → highQualityFormat
-        hqOptions.isNetworkAccessAllowed = true
-        hqOptions.isSynchronous = false
-        hqOptions.resizeMode = .exact  // 정확한 리사이징으로 품질 향상
-
-        // 카드 크기에 맞는 적절한 해상도 (전체 화면 원본 불필요)
-        let scale = displayScale
-        let targetSize = CGSize(width: 340 * scale, height: 500 * scale)
-
-        let reqID = PHImageManager.default().requestImage(
-            for: asset,
-            targetSize: targetSize,
-            contentMode: .aspectFit,
-            options: hqOptions
-        ) { img, info in
-            guard let img else { return }
-            let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
-            Task { @MainActor in
-                // 현재 보고 있는 인덱스일 때만 UI 업데이트
-                if index == self.currentIndex {
-                    self.currentUIImage = img
-                }
-                if !isDegraded {
-                    self.imageCache[index] = img
-                }
             }
         }
 

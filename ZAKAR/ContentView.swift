@@ -102,10 +102,11 @@ struct ContentView: View {
         .padding(.horizontal)
     }
     
+    // 리스트 행 배경에 Material(실시간 블러) 금지 — 행마다 오프스크린 렌더링을 강제해
+    // 그룹 수가 많을 때 스크롤 프레임 드랍의 주범이 됨. 불투명 근사색으로 대체.
     private var groupRowBackground: some View {
         RoundedRectangle(cornerRadius: 20, style: .continuous)
-            .fill(Color.white.opacity(0.06))
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .fill(Color.white.opacity(0.08))
             .overlay(
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .stroke(LinearGradient(colors: [Color.white.opacity(0.25), Color.white.opacity(0.05)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
@@ -138,10 +139,11 @@ struct ContentView: View {
                 Button {
                     openCleanMode(at: photoIndex, groupIndex: nil)
                 } label: {
+                    // 셀 단위 소프트 그림자 금지 — 셀마다 오프스크린 렌더링을 강제해
+                    // 그리드 스크롤 프레임 드랍의 주범 (2pt 간격이라 시각 효과도 미미)
                     AssetThumbnail(asset: asset, size: 125)
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.white.opacity(0.08), lineWidth: 0.8))
-                        .shadow(color: Color.black.opacity(0.25), radius: 10, x: 0, y: 6)
                 }
                 .buttonStyle(.plain)
             }
