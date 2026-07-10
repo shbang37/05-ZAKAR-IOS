@@ -25,6 +25,12 @@ struct ContentView: View {
     @State private var showTutorialOverlay = false
     @State private var showAutoCleanDialog = false
 
+    // 스크롤 방향 썸네일 프리페치 — 그리드와 유사 리스트는 썸네일 크기가 달라
+    // (캐시 키가 targetSize를 포함) 각각 독립 인스턴스를 쓴다
+    @Environment(\.displayScale) private var displayScale
+    @StateObject private var gridPrefetcher = ThumbnailPrefetcher()
+    @StateObject private var groupPrefetcher = ThumbnailPrefetcher()
+
     init(initialTab: Int = 0, year: Int? = nil, month: Int? = nil) {
         self._selectedTab = State(initialValue: initialTab)
         self.filterYear = year
@@ -97,9 +103,20 @@ struct ContentView: View {
                 }
                 .padding(12)
                 .background(groupRowBackground)
+                // 행 단위 프리페치 — 앞쪽 그룹들의 썸네일을 평탄화해 미리 디코드
+                .onAppear {
+                    groupPrefetcher.update(
+                        window: ThumbnailPrefetcher.groupWindow(snapshot, around: groupIndex),
+                        size: ThumbnailCache.rowSize,
+                        scale: displayScale
+                    )
+                }
             }
         }
         .padding(.horizontal)
+        // 재분석으로 그룹 목록이 교체되면 이전 목록 기준 캐싱을 버린다
+        .onChange(of: snapshot.count) { _, _ in groupPrefetcher.stopAll() }
+        .onDisappear { groupPrefetcher.stopAll() }
     }
     
     // 리스트 행 배경에 Material(실시간 블러) 금지 — 행마다 오프스크린 렌더링을 강제해
@@ -141,13 +158,24 @@ struct ContentView: View {
                 } label: {
                     // 셀 단위 소프트 그림자 금지 — 셀마다 오프스크린 렌더링을 강제해
                     // 그리드 스크롤 프레임 드랍의 주범 (2pt 간격이라 시각 효과도 미미)
-                    AssetThumbnail(asset: asset, size: 125)
+                    AssetThumbnail(asset: asset, size: ThumbnailCache.gridSize)
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.white.opacity(0.08), lineWidth: 0.8))
                 }
                 .buttonStyle(.plain)
+                // 이 셀이 보이면 스크롤 방향 앞쪽 썸네일을 미리 디코드해둔다
+                .onAppear {
+                    gridPrefetcher.update(
+                        window: ThumbnailPrefetcher.window(snapshot, around: photoIndex),
+                        size: ThumbnailCache.gridSize,
+                        scale: displayScale
+                    )
+                }
             }
         }
+        // 월별 필터 변경 등으로 목록이 교체되면 이전 목록 기준 캐싱을 버린다
+        .onChange(of: snapshot.count) { _, _ in gridPrefetcher.stopAll() }
+        .onDisappear { gridPrefetcher.stopAll() }
     }
 
     var body: some View {
