@@ -128,37 +128,42 @@ extension AppTheme {
     
     /// 업로드 모드별 테마
     enum UploadModeTheme {
-        case folder   // 폴더 업로드
-        case album    // 앨범 선택
-        case photos   // 개별 사진
-        
-        /// 모드별 액센트 컬러 (골드 통일)
+        case folder     // 폴더 업로드
+        case album      // 앨범 선택
+        case photos     // 개별 사진
+        case videos     // 영상
+        case documents  // 문서
+
+        /// 모드별 액센트 컬러
         var accentColor: Color {
-            return AppTheme.gracefulGold
+            switch self {
+            case .folder, .album:  return AppTheme.lightPurple
+            case .photos:          return AppTheme.gracefulGold
+            case .videos:          return AppTheme.goldenRose
+            case .documents:       return AppTheme.lavender
+            }
         }
-        
-        /// 모드별 그라디언트 (단일 컬러로 변경)
+
+        /// 모드별 그라디언트
         var gradient: Color {
-            return AppTheme.gracefulGold
+            accentColor
         }
-        
+
         /// 모드별 글로우 색상
         var glowColor: Color {
-            accentColor.opacity(0.3)
+            accentColor.opacity(0.4)
         }
-        
+
         /// ArchiveView.UploadMode에서 변환하는 헬퍼 메서드
         static func from<T>(_ mode: T) -> UploadModeTheme {
             let modeString = String(describing: mode)
             switch modeString {
-            case "folder":
-                return .folder
-            case "album":
-                return .album
-            case "photos":
-                return .photos
-            default:
-                return .folder
+            case "folder":    return .folder
+            case "album":     return .album
+            case "photos":    return .photos
+            case "videos":    return .videos
+            case "documents": return .documents
+            default:          return .album
             }
         }
     }
@@ -167,12 +172,7 @@ extension AppTheme {
 // MARK: - View Extensions for Easy Access
 
 extension View {
-    
-    /// 프리미엄 배경 적용
-    func premiumBackground(style: PremiumBackground.BackgroundStyle = .deep) -> some View {
-        self.background(PremiumBackground(style: style))
-    }
-    
+
     /// 골든 전경색 적용
     func goldenForeground() -> some View {
         self.foregroundStyle(AppTheme.gracefulGold)

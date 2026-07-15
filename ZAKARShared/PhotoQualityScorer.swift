@@ -1,5 +1,4 @@
 import Foundation
-import UIKit
 import Photos
 import Vision
 
@@ -73,8 +72,8 @@ final class PhotoQualityScorer {
             signals.faceQuality = faceScores.reduce(0, +) / Double(faceScores.count)
         }
 
-        // 미학 점수 (iOS 18+ 신규 Vision API)
-        if #available(iOS 18.0, *) {
+        // 미학 점수 (iOS 18+ / macOS 15+ 신규 Vision API)
+        if #available(iOS 18.0, macOS 15.0, *) {
             let request = CalculateImageAestheticsScoresRequest()
             if let observation = try? await request.perform(on: cgImage) {
                 // overallScore: -1(나쁨) ~ +1(좋음) → 0~1 정규화
@@ -130,7 +129,7 @@ final class PhotoQualityScorer {
             ) { img, _ in
                 guard !didResume else { return }
                 didResume = true
-                cont.resume(returning: img?.cgImage)
+                cont.resume(returning: img?.zakarCGImage)
             }
         }
     }

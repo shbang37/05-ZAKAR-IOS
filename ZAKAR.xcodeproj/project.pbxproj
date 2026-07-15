@@ -15,6 +15,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		D1AC0000000000000000A001 /* ZAKAR Mac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "ZAKAR Mac.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		707366652F433FA000AED26A /* ZAKARAdmin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ZAKARAdmin.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		70818D572F40AD51000F7F58 /* ZAKAR.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ZAKAR.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -25,7 +26,6 @@
 			membershipExceptions = (
 				"client_703077622763-65q7bbbajbpjrmvck4mlovg3antk0fbc.apps.googleusercontent.com.plist",
 				"GoogleService-Info.plist",
-				LocalDB.swift,
 			);
 			target = 707366642F433FA000AED26A /* ZAKARAdmin */;
 		};
@@ -39,6 +39,16 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		D1AC0000000000000000A00A /* ZAKARShared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ZAKARShared;
+			sourceTree = "<group>";
+		};
+		D1AC0000000000000000A002 /* ZAKARMac */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ZAKARMac;
+			sourceTree = "<group>";
+		};
 		707366662F433FA000AED26A /* ZAKARAdmin */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = ZAKARAdmin;
@@ -56,6 +66,11 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		D1AC0000000000000000A005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
 		707366622F433FA000AED26A /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
@@ -85,7 +100,10 @@
 			isa = PBXGroup;
 			children = (
 				70EA55FD2F39DC1B005866CB /* ZAKAR */,
+				D1AC0000000000000000A00A /* ZAKARShared */,
+				D1AC0000000000000000A002 /* ZAKARMac */,
 				70818D572F40AD51000F7F58 /* ZAKAR.app */,
+				D1AC0000000000000000A001 /* ZAKAR Mac.app */,
 				707366652F433FA000AED26A /* ZAKARAdmin.app */,
 				707366662F433FA000AED26A /* ZAKARAdmin */,
 				70292CB72F458670000432B6 /* Frameworks */,
@@ -95,6 +113,27 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		D1AC0000000000000000A003 /* ZAKAR Mac */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D1AC0000000000000000A007 /* Build configuration list for PBXNativeTarget "ZAKAR Mac" */;
+			buildPhases = (
+				D1AC0000000000000000A004 /* Sources */,
+				D1AC0000000000000000A005 /* Frameworks */,
+				D1AC0000000000000000A006 /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				D1AC0000000000000000A002 /* ZAKARMac */,
+				D1AC0000000000000000A00A /* ZAKARShared */,
+			);
+			name = "ZAKAR Mac";
+			packageProductDependencies = (
+			);
+			productName = "ZAKAR Mac";
+			productReference = D1AC0000000000000000A001 /* ZAKAR Mac.app */;
+			productType = "com.apple.product-type.application";
+		};
 		707366642F433FA000AED26A /* ZAKARAdmin */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 7073666D2F433FA100AED26A /* Build configuration list for PBXNativeTarget "ZAKARAdmin" */;
@@ -130,6 +169,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				70EA55FD2F39DC1B005866CB /* ZAKAR */,
+				D1AC0000000000000000A00A /* ZAKARShared */,
 			);
 			name = ZAKAR;
 			packageProductDependencies = (
@@ -156,6 +196,9 @@
 					70EA55FA2F39DC1B005866CB = {
 						CreatedOnToolsVersion = 26.2;
 					};
+					D1AC0000000000000000A003 = {
+						CreatedOnToolsVersion = 26.2;
+					};
 				};
 			};
 			buildConfigurationList = 70EA55F62F39DC1B005866CB /* Build configuration list for PBXProject "ZAKAR" */;
@@ -176,12 +219,18 @@
 			projectRoot = "";
 			targets = (
 				70EA55FA2F39DC1B005866CB /* ZAKAR */,
+				D1AC0000000000000000A003 /* ZAKAR Mac */,
 				707366642F433FA000AED26A /* ZAKARAdmin */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		D1AC0000000000000000A006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
 		707366632F433FA000AED26A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
@@ -195,6 +244,11 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		D1AC0000000000000000A004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
 		707366612F433FA000AED26A /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
@@ -208,6 +262,78 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
+		D1AC0000000000000000A008 /* Debug configuration for PBXNativeTarget "ZAKAR Mac" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = ZAKARMac/ZAKARMac.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 3WZ7DUJB2W;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "사진을 분석하고 정리하기 위해 사진 라이브러리에 접근합니다.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.zakar.app.mac;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = "macosx";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		D1AC0000000000000000A009 /* Release configuration for PBXNativeTarget "ZAKAR Mac" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = ZAKARMac/ZAKARMac.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 3WZ7DUJB2W;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "사진을 분석하고 정리하기 위해 사진 라이브러리에 접근합니다.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.zakar.app.mac;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = "macosx";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 		7073666E2F433FA100AED26A /* Debug configuration for PBXNativeTarget "ZAKARAdmin" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -411,7 +537,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 11;
+				CURRENT_PROJECT_VERSION = 16;
 				DEVELOPMENT_TEAM = 3WZ7DUJB2W;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -429,7 +555,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.10;
+				MARKETING_VERSION = 1.15;
 				PRODUCT_BUNDLE_IDENTIFIER = com.zakar.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -450,7 +576,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 11;
+				CURRENT_PROJECT_VERSION = 16;
 				DEVELOPMENT_TEAM = 3WZ7DUJB2W;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -468,7 +594,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.10;
+				MARKETING_VERSION = 1.15;
 				PRODUCT_BUNDLE_IDENTIFIER = com.zakar.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -486,6 +612,14 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		D1AC0000000000000000A007 /* Build configuration list for PBXNativeTarget "ZAKAR Mac" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D1AC0000000000000000A008 /* Debug configuration for PBXNativeTarget "ZAKAR Mac" */,
+				D1AC0000000000000000A009 /* Release configuration for PBXNativeTarget "ZAKAR Mac" */,
+			);
+			defaultConfigurationName = Release;
+		};
 		7073666D2F433FA100AED26A /* Build configuration list for PBXNativeTarget "ZAKARAdmin" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

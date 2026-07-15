@@ -498,7 +498,7 @@ class PhotoManager: ObservableObject {
         options.isNetworkAccessAllowed = true
         options.resizeMode = .fast
 
-        let image: UIImage? = await withCheckedContinuation { cont in
+        let image: PlatformImage? = await withCheckedContinuation { cont in
             var didResume = false
             PHImageManager.default().requestImage(
                 for: asset,
@@ -511,7 +511,7 @@ class PhotoManager: ObservableObject {
                 cont.resume(returning: img)
             }
         }
-        guard let cgImage = image?.cgImage else { return nil }
+        guard let cgImage = image?.zakarCGImage else { return nil }
 
         let request = VNGenerateImageFeaturePrintRequest()
         // 리비전 고정: OS 버전에 따라 거리 스케일이 달라지는 것을 방지 (임계값 일관성)
@@ -551,7 +551,7 @@ class PhotoManager: ObservableObject {
             ) { image, _ in
                 guard !didResume else { return }
                 didResume = true
-                let hash = image.flatMap { self.calculatePHashSafe($0) } ?? 0
+                let hash = image.flatMap { self.calculatePHashSafe($0.zakarCGImage) } ?? 0
                 cont.resume(returning: hash)
             }
         }
@@ -563,15 +563,14 @@ class PhotoManager: ObservableObject {
         return computedHash
     }
     
-    private func calculatePHashSafe(_ image: UIImage) -> UInt64? {
+    private func calculatePHashSafe(_ cgImage: CGImage?) -> UInt64? {
         autoreleasepool {
-            guard image.cgImage != nil else { return nil }
-            return calculatePHash(image)
+            guard let cgImage else { return nil }
+            return calculatePHash(cgImage)
         }
     }
 
-    private func calculatePHash(_ image: UIImage) -> UInt64 {
-        guard let cgImage = image.cgImage else { return 0 }
+    private func calculatePHash(_ cgImage: CGImage) -> UInt64 {
         // 1) Resize to 32x32 grayscale
         let width = 32, height = 32
         let colorSpace = CGColorSpaceCreateDeviceGray()
@@ -728,57 +727,6 @@ class PhotoManager: ObservableObject {
                 print("ZAKAR Log: 앨범 \(albumList.count)개 로드 완료")
             }
         }
-    }
-    
-    // MARK: - 월별 사진 데이터 생성
-    func getMonthlyPhotoData() -> [MonthData] {
-        var monthDictionary: [String: Int] = [:]
-        let calendar = Calendar.current
-        let now = Date()
-        let currentYear = calendar.component(.year, from: now)
-        let currentMonth = calendar.component(.month, from: now)
-        
-        // 모든 사진을 년월별로 그룹화
-        for asset in allPhotos {
-            guard let date = asset.creationDate else { continue }
-            
-            let year = calendar.component(.year, from: date)
-            let month = calendar.component(.month, from: date)
-            let key = "\(year)-\(month)"
-            
-            monthDictionary[key, default: 0] += 1
-        }
-        
-        // MonthData 배열 생성
-        var result: [MonthData] = []
-        
-        for (key, count) in monthDictionary {
-            let components = key.split(separator: "-")
-            guard components.count == 2,
-                  let year = Int(components[0]),
-                  let month = Int(components[1]) else {
-                continue
-            }
-            
-            let isCurrentMonth = (year == currentYear && month == currentMonth)
-            
-            result.append(MonthData(
-                year: year,
-                month: month,
-                photoCount: count,
-                isCurrentMonth: isCurrentMonth
-            ))
-        }
-        
-        // 최신 순으로 정렬 (2026년 4월 → 2026년 3월 → ...)
-        result.sort { lhs, rhs in
-            if lhs.year != rhs.year {
-                return lhs.year > rhs.year
-            }
-            return lhs.month > rhs.month
-        }
-        
-        return result
     }
     
     // MARK: - ML 학습 기반 대표 사진 선택
