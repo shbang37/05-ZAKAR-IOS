@@ -9,6 +9,7 @@ import Photos
 
 struct SidebarView: View {
     @EnvironmentObject var photoManager: PhotoManager
+    @EnvironmentObject var appState: MacAppState
     @EnvironmentObject var flyController: FlyToTrashController
     @Binding var selection: MacDestination?
 
@@ -49,6 +50,14 @@ struct SidebarView: View {
                         return true
                     }
                 }
+
+                Button {
+                    appState.showNewAlbum = true
+                } label: {
+                    Label("새 앨범…", systemImage: "plus")
+                        .foregroundStyle(AppTheme.subText)
+                }
+                .buttonStyle(.plain)
             }
 
             Section {

@@ -10,9 +10,11 @@ import Photos
 
 struct GroupCompareView: View {
     @EnvironmentObject var photoManager: PhotoManager
+    @EnvironmentObject var appState: MacAppState
     @EnvironmentObject var flyController: FlyToTrashController
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.undoManager) private var undoManager
+    /// 포커스와 무관하게 동작하도록 앱 소유 UndoManager 사용 (MacAppState 주석 참고)
+    private var undoManager: UndoManager { appState.undo }
     @StateObject private var session = GroupCompareSession()
 
     @State private var focusedIndex = 0        // 현재 그룹 내 포커스된 카드
@@ -85,13 +87,7 @@ struct GroupCompareView: View {
         .focused($contentFocused)
         .focusEffectDisabled()
         .onAppear { contentFocused = true }
-        .onKeyPress(.return) { performClean(keepOnlyRepresentative: true); return .handled }
-        .onKeyPress(.space) { openQuickLook(decision); return .handled }
-        .onKeyPress(.leftArrow) { moveFocus(-1, in: decision); return .handled }
-        .onKeyPress(.rightArrow) { moveFocus(1, in: decision); return .handled }
-        .onKeyPress(.delete) { toggleFocusedDelete(decision); return .handled }
-        .onKeyPress(KeyEquivalent("s")) { session.skipCurrent(); return .handled }
-        .onKeyPress(KeyEquivalent("f")) { favoriteFocused(decision); return .handled }
+        .macKeys { handleKey($0, $1, decision) }   // keyCode 기반 — 한글 입력기·포커스 무관
         .overlay {
             if showQuickLook {
                 QuickLookOverlay(assets: decision.assets,
@@ -102,6 +98,43 @@ struct GroupCompareView: View {
     }
 
     // MARK: - 키보드 동작
+
+    /// 키 처리 — QuickLook이 떠 있으면 오버레이 동작이 우선.
+    private func handleKey(_ key: MacKey, _ mods: NSEvent.ModifierFlags, _ decision: GroupDecision) -> Bool {
+        // ⌘Z/⌘⇧Z는 여기서 처리 (메뉴 단축키는 입력기 상태에 흔들릴 수 있음)
+        if mods.contains(.command), key == .letterZ {
+            mods.contains(.shift) ? undoManager.redo() : undoManager.undo()
+            return true
+        }
+        guard mods.zakarIsPlainKey else { return false }   // 나머지 ⌘·⌥ 조합은 시스템/메뉴에 양보
+
+        if showQuickLook {
+            switch key {
+            case .leftArrow:
+                if quickLookIndex > 0 { quickLookIndex -= 1 }
+            case .rightArrow:
+                if quickLookIndex < decision.assets.count - 1 { quickLookIndex += 1 }
+            case .space, .escape:
+                showQuickLook = false
+                contentFocused = true
+            default:
+                break
+            }
+            return true
+        }
+
+        switch key {
+        case .enter:      performClean(keepOnlyRepresentative: true)
+        case .space:      openQuickLook(decision)
+        case .leftArrow:  moveFocus(-1, in: decision)
+        case .rightArrow: moveFocus(1, in: decision)
+        case .delete:     toggleFocusedDelete(decision)
+        case .letterS:    session.skipCurrent()
+        case .letterF:    favoriteFocused(decision)
+        default: return false
+        }
+        return true
+    }
 
     private func moveFocus(_ delta: Int, in decision: GroupDecision) {
         let count = decision.assets.count
@@ -122,9 +155,11 @@ struct GroupCompareView: View {
     private func favoriteFocused(_ decision: GroupDecision) {
         guard decision.assets.indices.contains(focusedIndex) else { return }
         let asset = decision.assets[focusedIndex]
+        // 캐시된 PHAsset은 스냅샷이라 isFavorite이 갱신되지 않는다 — 최신 값을 다시 읽는다
+        let fresh = PHAsset.fetchAssets(withLocalIdentifiers: [asset.localIdentifier], options: nil).firstObject
+        let newValue = !(fresh?.isFavorite ?? asset.isFavorite)
         PHPhotoLibrary.shared().performChanges({
-            let req = PHAssetChangeRequest(for: asset)
-            req.isFavorite = !asset.isFavorite
+            PHAssetChangeRequest(for: fresh ?? asset).isFavorite = newValue
         }, completionHandler: { _, _ in })
     }
 

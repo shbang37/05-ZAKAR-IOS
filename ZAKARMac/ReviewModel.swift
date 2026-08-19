@@ -75,7 +75,10 @@ final class ReviewSession: ObservableObject {
 
     func toggleFavoriteCurrent(undoManager: UndoManager? = nil) {
         guard let asset = current else { return }
-        let newValue = !asset.isFavorite
+        // allPhotos에 담긴 PHAsset은 페치 시점 스냅샷이라 isFavorite이 갱신되지 않는다.
+        // 최신 값을 다시 읽지 않으면 F가 토글이 아니라 "설정"만 반복하게 된다.
+        let fresh = PHAsset.fetchAssets(withLocalIdentifiers: [asset.localIdentifier], options: nil).firstObject
+        let newValue = !(fresh?.isFavorite ?? asset.isFavorite)
         setFavorite(id: asset.localIdentifier, to: newValue)
         undoManager?.registerUndo(withTarget: self) { s in
             s.setFavorite(id: asset.localIdentifier, to: !newValue)

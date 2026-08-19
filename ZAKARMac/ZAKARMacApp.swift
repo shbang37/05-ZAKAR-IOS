@@ -27,7 +27,7 @@ struct ZAKARMacApp: App {
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified(showsTitle: true))
         .commands {
-            CommandGroup(replacing: .newItem) {}
+            // "새 윈도우" 대체는 MacCommands의 .newItem 그룹("새 앨범…")이 담당
             MacCommands(appState: appState)
         }
     }

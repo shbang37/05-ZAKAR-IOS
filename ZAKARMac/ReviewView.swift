@@ -10,9 +10,11 @@ import AppKit
 
 struct ReviewView: View {
     @EnvironmentObject var photoManager: PhotoManager
+    @EnvironmentObject var appState: MacAppState
     @EnvironmentObject var flyController: FlyToTrashController
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.undoManager) private var undoManager
+    /// 포커스와 무관하게 동작하도록 앱 소유 UndoManager 사용 (MacAppState 주석 참고)
+    private var undoManager: UndoManager { appState.undo }
     @StateObject private var session = ReviewSession()
 
     @FocusState private var focused: Bool
@@ -48,12 +50,7 @@ struct ReviewView: View {
         .focused($focused)
         .focusEffectDisabled()
         .onAppear { focused = true }
-        .background(albumShortcuts)
-        .onKeyPress(.delete) { session.deleteCurrent(reduceMotion: reduceMotion, undoManager: undoManager); return .handled }
-        .onKeyPress(.leftArrow) { session.back(); return .handled }
-        .onKeyPress(.rightArrow) { session.advance(); return .handled }
-        .onKeyPress(.space) { quickLookIndex = session.currentIndex; showQuickLook = true; return .handled }
-        .onKeyPress(KeyEquivalent("f")) { session.toggleFavoriteCurrent(undoManager: undoManager); return .handled }
+        .macKeys(handleKey)   // keyCode 기반 — 한글 입력기·포커스 무관
         .overlay {
             if showQuickLook {
                 QuickLookOverlay(assets: photoManager.allPhotos,
@@ -105,13 +102,61 @@ struct ReviewView: View {
         }
     }
 
-    /// ⌘1~9 앨범 이동 (숨김 버튼)
-    private var albumShortcuts: some View {
-        ForEach(Array(photoManager.albums.prefix(9).enumerated()), id: \.element.id) { index, _ in
-            Button("") { session.moveCurrentToAlbum(index, undoManager: undoManager) }
-                .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
-                .hidden()
+    /// 키 처리 — 오버레이가 떠 있으면 오버레이가 우선.
+    /// ⌘1~9는 "현재 사진을 앨범으로 이동"이며, 로컬 모니터가 먼저 잡으므로
+    /// 루트의 ⌘1~9(앨범 화면 이동)보다 우선한다.
+    private func handleKey(_ key: MacKey, _ mods: NSEvent.ModifierFlags) -> Bool {
+        if showGuide {
+            showGuide = false
+            guideShown = true
+            focused = true
+            return true
         }
+        if showQuickLook {
+            switch key {
+            case .leftArrow:
+                if quickLookIndex > 0 { quickLookIndex -= 1 }
+            case .rightArrow:
+                if quickLookIndex < photoManager.allPhotos.count - 1 { quickLookIndex += 1 }
+            case .space, .escape:
+                showQuickLook = false
+                focused = true
+            default:
+                break
+            }
+            return true   // 확대 중에는 뒤쪽 키 동작을 막는다
+        }
+        if mods.contains(.command) {
+            // ⌘Z/⌘⇧Z도 여기서 처리 — 메뉴 단축키는 KeyEquivalent 문자 기반이라
+            // 입력기 상태에 따라 매칭이 흔들릴 수 있다 (메뉴 항목 자체는 그대로 둔다)
+            if key == .letterZ {
+                mods.contains(.shift) ? undoManager.redo() : undoManager.undo()
+                return true
+            }
+            guard case .digit(let n) = key else { return false }
+            guard photoManager.albums.indices.contains(n - 1) else {
+                appState.showToast(photoManager.albums.isEmpty
+                                   ? "이동할 앨범이 없습니다 — ⌘N으로 새 앨범을 만드세요"
+                                   : "⌘\(n)에 지정된 앨범이 없습니다")
+                return true
+            }
+            let title = photoManager.albums[n - 1].title
+            session.moveCurrentToAlbum(n - 1, undoManager: undoManager)
+            appState.showToast("‘\(title)’ 앨범으로 이동")
+            return true
+        }
+        guard mods.zakarIsPlainKey else { return false }
+        switch key {
+        case .delete:     session.deleteCurrent(reduceMotion: reduceMotion, undoManager: undoManager)
+        case .leftArrow:  session.back()
+        case .rightArrow: session.advance()
+        case .letterF:    session.toggleFavoriteCurrent(undoManager: undoManager)
+        case .space:
+            quickLookIndex = session.currentIndex
+            showQuickLook = true
+        default: return false
+        }
+        return true
     }
 
     /// 다음 3장 원본 프리페치

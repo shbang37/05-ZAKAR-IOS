@@ -33,6 +33,23 @@ struct MacRootView: View {
         .coordinateSpace(name: "root")
         .environmentObject(flyController)
         .task { await ensureAccessAndLoad() }
+        .sheet(isPresented: $appState.showNewAlbum) {
+            NewAlbumSheet().environmentObject(photoManager)
+        }
+        .overlay(alignment: .bottom) {
+            if let toast = appState.toast {
+                Text(toast)
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .background(Capsule().fill(AppTheme.midPurple.opacity(0.95)))
+                    .overlay(Capsule().stroke(AppTheme.gracefulGold.opacity(0.5), lineWidth: 1))
+                    .padding(.bottom, 110)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: appState.toast)
     }
 
     /// ⌘1~9로 앞쪽 9개 앨범으로 이동 (사이드바 ⌘n 힌트와 일치)
@@ -82,7 +99,7 @@ struct MacRootView: View {
         guard status == .authorized || status == .limited else { return }
 
         photoManager.fetchPhotos()
-        photoManager.fetchAlbums()
+        photoManager.fetchUserAlbumsForMac()   // 빈 앨범도 ⌘1~9 대상이 되도록 Mac 전용 로더 사용
         photoManager.loadTrash()
         photoManager.analyzeSimilaritiesIfNeeded()
     }
