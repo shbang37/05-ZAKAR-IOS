@@ -29,6 +29,18 @@ struct MacRootView: View {
 
             // 흡입 애니메이션 전용 최상위 레이어 (SplitView 간 단일 좌표계)
             FlyToTrashLayer(controller: flyController)
+
+            // Space 확대 — 사이드바까지 덮는 창 전체 미리보기 (detail .overlay는 detail에 갇힌다)
+            if appState.quickLook != nil {
+                QuickLookOverlay(
+                    assets: appState.quickLook?.assets ?? [],
+                    index: Binding(get: { appState.quickLook?.index ?? 0 },
+                                   set: { appState.quickLook?.index = $0 }),
+                    onClose: { appState.quickLook = nil }
+                )
+                .transition(.opacity)
+                .zIndex(10)
+            }
         }
         .coordinateSpace(name: "root")
         .environmentObject(flyController)
@@ -80,9 +92,13 @@ struct MacRootView: View {
                                    title: "즐겨찾기",
                                    subtitle: "곧 제공됩니다.")
             case .album(let id):
-                MacPlaceholderView(systemImage: "folder",
-                                   title: photoManager.albums.first { $0.id == id }?.title ?? "앨범",
-                                   subtitle: "앨범 상세는 곧 제공됩니다.")
+                if let album = photoManager.albums.first(where: { $0.id == id }) {
+                    AlbumDetailView(album: album)
+                } else {
+                    MacPlaceholderView(systemImage: "folder",
+                                       title: "앨범을 찾을 수 없습니다",
+                                       subtitle: "사진 앱에서 삭제되었을 수 있습니다.")
+                }
             case .trash:
                 TrashView()
             }

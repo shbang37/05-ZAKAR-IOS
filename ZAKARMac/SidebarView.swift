@@ -3,7 +3,7 @@ import Photos
 
 // ============================================================
 // SidebarView — NavigationSplitView 사이드바
-// 섹션: 라이브러리(모든 사진/유사 그룹/리뷰) · 모음(즐겨찾기/앨범 ⌘1~9) · 휴지통(골드 배지)
+// 섹션: 라이브러리(리뷰/유사 그룹/모든 사진 — 자주 쓰는 순) · 모음(즐겨찾기/앨범 ⌘1~9) · 휴지통(골드 배지)
 // 하단: 유사 분석 진행 표시. 사이드바 vibrancy는 .listStyle(.sidebar) 기본 제공.
 // ============================================================
 
@@ -16,16 +16,16 @@ struct SidebarView: View {
     var body: some View {
         List(selection: $selection) {
             Section("라이브러리") {
-                Label("모든 사진", systemImage: "photo.on.rectangle")
-                    .badge(photoManager.allPhotos.count)
-                    .tag(MacDestination.allPhotos)
+                Label("리뷰", systemImage: "eye")
+                    .tag(MacDestination.review)
 
                 Label("유사 그룹", systemImage: "square.on.square")
                     .badge(photoManager.groupedPhotos.count)
                     .tag(MacDestination.similarGroups)
 
-                Label("리뷰", systemImage: "eye")
-                    .tag(MacDestination.review)
+                Label("모든 사진", systemImage: "photo.on.rectangle")
+                    .badge(photoManager.allPhotos.count)
+                    .tag(MacDestination.allPhotos)
             }
 
             Section("모음") {
@@ -36,6 +36,9 @@ struct SidebarView: View {
                     HStack {
                         Label(album.title, systemImage: "folder")
                         Spacer()
+                        Text("\(album.assetCount)")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.subText.opacity(0.8))
                         if index < 9 {
                             Text("⌘\(index + 1)")
                                 .font(.caption)
@@ -46,7 +49,15 @@ struct SidebarView: View {
                     .dropDestination(for: String.self) { ids, _ in   // 드래그한 사진을 앨범에 추가
                         let assets = fetchAssets(ids)
                         guard !assets.isEmpty else { return false }
-                        photoManager.addAssets(assets, toAlbum: album.collection) { _ in }
+                        photoManager.addAssets(assets, toAlbum: album.collection) { success in
+                            guard success else {
+                                appState.showToast("‘\(album.title)’ 앨범에 넣지 못했습니다")
+                                return
+                            }
+                            appState.showToast("‘\(album.title)’ 앨범에 \(assets.count)장 추가")
+                            photoManager.fetchUserAlbumsForMac()
+                            appState.albumRevision += 1
+                        }
                         return true
                     }
                 }

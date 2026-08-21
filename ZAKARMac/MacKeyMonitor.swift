@@ -13,13 +13,17 @@ import AppKit
 // keyCode는 입력기·포커스와 무관한 물리 키 번호라 두 문제를 동시에 회피한다.
 // 로컬 모니터는 key equivalent(⌘n) 디스패치보다 먼저 호출되므로,
 // 리뷰 모드의 ⌘1~9(사진을 앨범으로 이동)가 루트의 ⌘1~9(앨범 화면 이동)보다 우선한다.
+//
+// 모니터는 **앱 전체에 하나만** 두고, 핸들러를 화면(MacDestination)별로 등록해
+// 현재 선택된 화면의 것만 호출한다. 뷰마다 모니터를 달면 화면 전환 시
+// onDisappear가 늦거나 누락됐을 때 죽은 화면의 핸들러가 키를 계속 삼킨다.
 // ============================================================
 
 enum MacKey: Equatable {
     case delete            // ⌫ Backspace / ⌦ Forward Delete
     case leftArrow, rightArrow, upArrow, downArrow
     case space, escape, enter
-    case letterF, letterS, letterZ
+    case letterF, letterS, letterR, letterZ
     case digit(Int)        // 1~9
 
     init?(keyCode: UInt16) {
@@ -34,6 +38,7 @@ enum MacKey: Equatable {
         case 36, 76: self = .enter
         case 3:   self = .letterF
         case 1:   self = .letterS
+        case 15:  self = .letterR
         case 6:   self = .letterZ
         case 18: self = .digit(1)
         case 19: self = .digit(2)
@@ -49,48 +54,23 @@ enum MacKey: Equatable {
     }
 }
 
-/// 모니터 등록 상태와 최신 핸들러를 담는 참조 상자.
-/// 클로저를 모니터에 그대로 넘기면 등록 시점의 뷰 상태(showQuickLook 등)를
-/// 캡처한 채 굳어버리므로, 매 렌더마다 여기 갱신된 핸들러를 통해 호출한다.
-@MainActor
-final class MacKeyBox {
-    var handler: (MacKey, NSEvent.ModifierFlags) -> Bool = { _, _ in false }
-    var monitor: Any?
-}
-
 struct MacKeyHandler: ViewModifier {
+    let destination: MacDestination
     let handler: (MacKey, NSEvent.ModifierFlags) -> Bool
-    @State private var box = MacKeyBox()
+    @EnvironmentObject private var appState: MacAppState
 
     func body(content: Content) -> some View {
-        box.handler = handler
-        let box = box
-        return content
-            .onAppear {
-                guard box.monitor == nil else { return }
-                box.monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-                    MainActor.assumeIsolated {
-                        // 텍스트 편집 중에는 가로채지 않는다
-                        if event.window?.firstResponder is NSTextView { return event }
-                        guard let key = MacKey(keyCode: event.keyCode) else { return event }
-                        return box.handler(key, event.modifierFlags) ? nil : event
-                    }
-                }
-            }
-            .onDisappear {
-                if let m = box.monitor {
-                    NSEvent.removeMonitor(m)
-                    box.monitor = nil
-                }
-            }
+        appState.registerKeys(for: destination, handler: handler)   // 매 렌더마다 최신 상태를 캡처한 클로저로 갱신
+        return content.onDisappear { appState.unregisterKeys(for: destination) }
     }
 }
 
 extension View {
-    /// 이 뷰가 화면에 있는 동안 keyCode 기반으로 키를 처리한다.
+    /// 사이드바 선택이 `destination`인 동안 keyCode 기반으로 키를 처리한다.
     /// 핸들러가 `true`를 반환하면 이벤트를 소비(다른 곳으로 전달 안 함)한다.
-    func macKeys(_ handler: @escaping (MacKey, NSEvent.ModifierFlags) -> Bool) -> some View {
-        modifier(MacKeyHandler(handler: handler))
+    func macKeys(for destination: MacDestination,
+                 _ handler: @escaping (MacKey, NSEvent.ModifierFlags) -> Bool) -> some View {
+        modifier(MacKeyHandler(destination: destination, handler: handler))
     }
 }
 
@@ -98,5 +78,12 @@ extension NSEvent.ModifierFlags {
     /// ⌘/⌥/⌃ 없이 눌린 순수 키인지 (⇧·CapsLock·numericPad는 무시)
     var zakarIsPlainKey: Bool {
         !contains(.command) && !contains(.option) && !contains(.control)
+    }
+
+    /// ⌥·⌃ 없이 ⌘만 눌린 조합인지.
+    /// 이걸 확인하지 않으면 리뷰 모드에서 ⌘⌥1~3(모드 전환)이
+    /// ⌘1~9(사진을 앨범으로 이동)로 잘못 처리되어 사진이 조용히 앨범에 들어간다.
+    var zakarIsCommandOnly: Bool {
+        contains(.command) && !contains(.option) && !contains(.control)
     }
 }

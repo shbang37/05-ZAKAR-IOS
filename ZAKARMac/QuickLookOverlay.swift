@@ -4,7 +4,8 @@ import AppKit
 
 // ============================================================
 // QuickLookOverlay — Space 확대 미리보기
-// 현재 항목을 크게(≈1.45×) 확대해 보여주고 ←→로 그룹 내 순회, Space/Esc로 닫는다.
+// **창 전체**를 덮고 가용 영역을 꽉 채워 보여준다(잘림 없음). ←→로 순회, Space/Esc로 닫기.
+// 루트(MacRootView)에서 그려지며, 키 입력은 각 모드의 macKeys 핸들러가 처리한다.
 // ============================================================
 
 struct QuickLookOverlay: View {
@@ -14,7 +15,6 @@ struct QuickLookOverlay: View {
 
     @State private var image: NSImage?
     @State private var requestID: PHImageRequestID?
-    @FocusState private var focused: Bool
 
     private var asset: PHAsset? {
         assets.indices.contains(index) ? assets[index] : nil
@@ -22,19 +22,22 @@ struct QuickLookOverlay: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.9).ignoresSafeArea()
+            Color.black.opacity(0.94).ignoresSafeArea()
                 .onTapGesture { onClose() }
 
-            VStack(spacing: 16) {
-                if let image {
-                    Image(nsImage: image)
-                        .resizable()
-                        .scaledToFit()
-                        .scaleEffect(1.45)
-                        .clipped()
-                } else {
-                    ProgressView().tint(AppTheme.gracefulGold)
+            VStack(spacing: 12) {
+                // 가용 영역을 꽉 채우는 aspect-fit — scaleEffect로 키우면 넘치는 만큼 잘린다
+                ZStack {
+                    if let image {
+                        Image(nsImage: image)
+                            .resizable()
+                            .interpolation(.high)
+                            .scaledToFit()
+                    } else {
+                        ProgressView().tint(AppTheme.gracefulGold)
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 if let asset {
                     Text(metadataLine(asset))
@@ -45,35 +48,31 @@ struct QuickLookOverlay: View {
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.5))
             }
-            .padding(40)
+            .padding(.horizontal, 24)
+            .padding(.top, 24)
+            .padding(.bottom, 16)
         }
-        .focusable()
-        .focused($focused)
-        .focusEffectDisabled()
-        .onKeyPress(.space) { onClose(); return .handled }
-        .onKeyPress(.escape) { onClose(); return .handled }
-        .onKeyPress(.leftArrow) { cycle(-1); return .handled }
-        .onKeyPress(.rightArrow) { cycle(1); return .handled }
-        .onAppear { focused = true; load() }
+        .onAppear { load() }
         .onChange(of: index) { _, _ in load() }
     }
 
-    private func cycle(_ delta: Int) {
-        let next = index + delta
-        guard assets.indices.contains(next) else { return }
-        index = next
+    /// 화면 해상도에 맞춘 요청 크기 — 창 전체로 키우므로 1600px로는 뭉갠다
+    private var fullScreenTarget: CGSize {
+        let screen = NSScreen.main?.frame.size ?? CGSize(width: 1920, height: 1080)
+        let scale = NSScreen.main?.backingScaleFactor ?? 2.0
+        return CGSize(width: screen.width * scale, height: screen.height * scale)
     }
 
     private func load() {
         guard let asset else { return }
         if let rid = requestID { ThumbnailCache.manager.cancelImageRequest(rid) }
         let options = PHImageRequestOptions()
-        options.deliveryMode = .highQualityFormat
+        options.deliveryMode = .opportunistic   // 저화질 즉시 → 고화질 교체 (전체화면은 원본이 커서 느리다)
         options.isNetworkAccessAllowed = true
         let requested = asset.localIdentifier
         requestID = ThumbnailCache.manager.requestImage(
             for: asset,
-            targetSize: CGSize(width: 1600, height: 1600),
+            targetSize: fullScreenTarget,
             contentMode: .aspectFit,
             options: options
         ) { img, _ in

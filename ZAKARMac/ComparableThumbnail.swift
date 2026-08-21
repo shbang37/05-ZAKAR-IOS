@@ -74,7 +74,7 @@ struct ComparableThumbnail: View {
                 VStack {
                     Spacer()
                     Button(action: onMakeRepresentative) {
-                        Label("대표로", systemImage: "star")
+                        Label("대표로  R", systemImage: "star")
                             .font(.caption.weight(.semibold))
                             .padding(.horizontal, 10).padding(.vertical, 5)
                             .background(Capsule().fill(AppTheme.gracefulGold))

@@ -19,6 +19,11 @@ enum ReviewAction: Equatable {
 final class ReviewSession: ObservableObject {
     @Published var currentIndex = 0
     @Published var history: [String: ReviewAction] = [:]
+    /// configure 완료 신호.
+    /// photoManager는 @Published가 아니라 여기에 넣어도 뷰가 다시 그려지지 않는다.
+    /// 첫 렌더는 photoManager가 nil이라 current도 nil(빈 화면)인데, onAppear에서
+    /// 연결만 하고 발행을 안 하면 키를 누를 때까지 빈 화면이 그대로 남는다.
+    @Published private(set) var isConfigured = false
 
     private weak var photoManager: PhotoManager?
     private weak var flyController: FlyToTrashController?
@@ -26,6 +31,7 @@ final class ReviewSession: ObservableObject {
     func configure(_ pm: PhotoManager, _ fly: FlyToTrashController) {
         photoManager = pm
         flyController = fly
+        if !isConfigured { isConfigured = true }   // 첫 사진이 바로 뜨도록 갱신을 건다
     }
 
     var assets: [PHAsset] { photoManager?.allPhotos ?? [] }
@@ -97,11 +103,17 @@ final class ReviewSession: ObservableObject {
         history[id] = value ? .favorited : nil
     }
 
-    func moveCurrentToAlbum(_ index: Int, undoManager: UndoManager? = nil) {
-        guard let pm = photoManager, let asset = current, pm.albums.indices.contains(index) else { return }
+    /// 사진을 앨범에 실제로 추가한다. PhotoKit 쓰기가 실패할 수 있으므로
+    /// 결과를 버리지 않고 `onResult`로 돌려준다 (실패를 조용히 넘기면 "넣었는데 없다"가 된다).
+    func moveCurrentToAlbum(_ index: Int,
+                            undoManager: UndoManager? = nil,
+                            onResult: ((Bool) -> Void)? = nil) {
+        guard let pm = photoManager, let asset = current, pm.albums.indices.contains(index) else {
+            onResult?(false); return
+        }
         let album = pm.albums[index]
         let assetIndex = currentIndex
-        pm.addAssets([asset], toAlbum: album.collection) { _ in }
+        pm.addAssets([asset], toAlbum: album.collection) { success in onResult?(success) }
         history[asset.localIdentifier] = .moved(album.title)
 
         let id = asset.localIdentifier

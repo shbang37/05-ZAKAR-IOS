@@ -4,8 +4,7 @@ import Photos
 // ============================================================
 // GroupCompareView — 그룹 비교 모드 (차별화 기능)
 // 헤더(진행률) + 사진 카드(≤5장 1행, 초과 시 격자) + 액션 바.
-// 키보드: ⏎ 정리 · S 건너뛰기 · ←→ 포커스 · ⌫ 삭제 토글 · F 즐겨찾기 · Space QuickLook.
-// 흡입 애니메이션은 Phase 5, Undo는 Phase 7.
+// 키보드: ⏎ 정리 · R 대표 지정 · S 건너뛰기 · ←→ 포커스 · ⌫ 삭제 토글 · F 즐겨찾기 · Space 확대.
 // ============================================================
 
 struct GroupCompareView: View {
@@ -18,8 +17,7 @@ struct GroupCompareView: View {
     @StateObject private var session = GroupCompareSession()
 
     @State private var focusedIndex = 0        // 현재 그룹 내 포커스된 카드
-    @State private var showQuickLook = false
-    @State private var quickLookIndex = 0
+    @State private var gridWidth: CGFloat = 900 // 카드 크기 계산용 가용 폭
     @FocusState private var contentFocused: Bool
 
     /// 흡입 발사(정리 전, 카드 프레임 유효할 때) 후 데이터 커밋 — 비차단
@@ -74,6 +72,14 @@ struct GroupCompareView: View {
                                 : .asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
                                               removal: .opacity))
             }
+            .background(
+                // 카드 크기를 계산할 가용 폭 측정 (padding 24×2 제외)
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { gridWidth = geo.size.width - 48 }
+                        .onChange(of: geo.size.width) { _, w in gridWidth = w - 48 }
+                }
+            )
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: session.currentIndex)
 
             GroupActionBar(deleteCount: decision.assets.count - 1,
@@ -87,14 +93,7 @@ struct GroupCompareView: View {
         .focused($contentFocused)
         .focusEffectDisabled()
         .onAppear { contentFocused = true }
-        .macKeys { handleKey($0, $1, decision) }   // keyCode 기반 — 한글 입력기·포커스 무관
-        .overlay {
-            if showQuickLook {
-                QuickLookOverlay(assets: decision.assets,
-                                 index: $quickLookIndex,
-                                 onClose: { showQuickLook = false; contentFocused = true })
-            }
-        }
+        .macKeys(for: .similarGroups) { handleKey($0, $1, decision) }   // keyCode 기반 — 한글 입력기·포커스 무관
     }
 
     // MARK: - 키보드 동작
@@ -102,20 +101,23 @@ struct GroupCompareView: View {
     /// 키 처리 — QuickLook이 떠 있으면 오버레이 동작이 우선.
     private func handleKey(_ key: MacKey, _ mods: NSEvent.ModifierFlags, _ decision: GroupDecision) -> Bool {
         // ⌘Z/⌘⇧Z는 여기서 처리 (메뉴 단축키는 입력기 상태에 흔들릴 수 있음)
-        if mods.contains(.command), key == .letterZ {
+        if mods.zakarIsCommandOnly, key == .letterZ {
             mods.contains(.shift) ? undoManager.redo() : undoManager.undo()
             return true
         }
         guard mods.zakarIsPlainKey else { return false }   // 나머지 ⌘·⌥ 조합은 시스템/메뉴에 양보
 
-        if showQuickLook {
+        if let ql = appState.quickLook {
             switch key {
             case .leftArrow:
-                if quickLookIndex > 0 { quickLookIndex -= 1 }
+                if ql.index > 0 { appState.quickLook?.index = ql.index - 1; focusedIndex = ql.index - 1 }
             case .rightArrow:
-                if quickLookIndex < decision.assets.count - 1 { quickLookIndex += 1 }
+                if ql.index < decision.assets.count - 1 {
+                    appState.quickLook?.index = ql.index + 1
+                    focusedIndex = ql.index + 1
+                }
             case .space, .escape:
-                showQuickLook = false
+                appState.quickLook = nil
                 contentFocused = true
             default:
                 break
@@ -130,6 +132,7 @@ struct GroupCompareView: View {
         case .rightArrow: moveFocus(1, in: decision)
         case .delete:     toggleFocusedDelete(decision)
         case .letterS:    session.skipCurrent()
+        case .letterR:    makeFocusedRepresentative(decision)
         case .letterF:    favoriteFocused(decision)
         default: return false
         }
@@ -143,8 +146,17 @@ struct GroupCompareView: View {
     }
 
     private func openQuickLook(_ decision: GroupDecision) {
-        quickLookIndex = min(focusedIndex, max(0, decision.assets.count - 1))
-        showQuickLook = true
+        appState.quickLook = QuickLookRequest(assets: decision.assets,
+                                              index: min(focusedIndex, max(0, decision.assets.count - 1)))
+    }
+
+    /// R — 포커스된 카드를 대표로 지정 (기존 대표는 자동으로 삭제 후보가 된다)
+    private func makeFocusedRepresentative(_ decision: GroupDecision) {
+        guard decision.assets.indices.contains(focusedIndex) else { return }
+        let asset = decision.assets[focusedIndex]
+        guard !decision.isRepresentative(asset) else { return }
+        session.setRepresentative(asset)
+        appState.showToast("대표 사진을 바꿨습니다")
     }
 
     private func toggleFocusedDelete(_ decision: GroupDecision) {
@@ -163,34 +175,39 @@ struct GroupCompareView: View {
         }, completionHandler: { _, _ in })
     }
 
+    /// 카드 격자.
+    /// GeometryReader + 고정 minHeight + 내부 ScrollView 조합을 쓰면 6장 이상일 때
+    /// 두 번째 행이 잘려 보였다. 자연 높이로 두고 바깥 ScrollView 하나만 스크롤하게 한다.
     @ViewBuilder
     private func thumbnailGrid(_ decision: GroupDecision) -> some View {
-        GeometryReader { geo in
-            let n = decision.assets.count
-            let spacing: CGFloat = 16
-            if n <= 5 {
-                // ≤5장: 1행 나란히 (가용 폭에 맞춰 카드 크기 계산)
-                let cardSize = min(340, (geo.size.width - spacing * CGFloat(n - 1)) / CGFloat(max(n, 1)))
-                HStack(spacing: spacing) {
-                    ForEach(Array(decision.assets.enumerated()), id: \.element.localIdentifier) { idx, asset in
-                        card(asset, index: idx, in: decision, size: cardSize)
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-            } else {
-                // 초과: 격자
-                let cardSize: CGFloat = 220
-                let columns = [GridItem(.adaptive(minimum: cardSize, maximum: cardSize), spacing: spacing)]
-                ScrollView {
-                    LazyVGrid(columns: columns, spacing: spacing) {
-                        ForEach(Array(decision.assets.enumerated()), id: \.element.localIdentifier) { idx, asset in
-                            card(asset, index: idx, in: decision, size: cardSize)
-                        }
-                    }
+        let n = decision.assets.count
+        let spacing: CGFloat = 16
+
+        if n <= 5 {
+            // ≤5장: 1행 나란히 (가용 폭에 맞춰 카드 크기 계산)
+            let available = max(gridWidth - spacing * CGFloat(max(n - 1, 0)), 120)
+            let cardSize = min(340, available / CGFloat(max(n, 1)))
+            HStack(spacing: spacing) {
+                ForEach(Array(decision.assets.enumerated()), id: \.element.localIdentifier) { idx, asset in
+                    card(asset, index: idx, in: decision, size: cardSize)
                 }
             }
+            .frame(maxWidth: .infinity)
+        } else {
+            // 초과: 격자 — 가용 폭에 맞춰 열 수를 정하고 남는 폭을 카드에 나눠준다
+            let maxCard: CGFloat = 240
+            let columnCount = max(Int((gridWidth + spacing) / (maxCard + spacing)), 2)
+            let cardSize = min(maxCard,
+                               (gridWidth - spacing * CGFloat(columnCount - 1)) / CGFloat(columnCount))
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(cardSize), spacing: spacing),
+                                     count: columnCount),
+                      spacing: spacing) {
+                ForEach(Array(decision.assets.enumerated()), id: \.element.localIdentifier) { idx, asset in
+                    card(asset, index: idx, in: decision, size: cardSize)
+                }
+            }
+            .frame(maxWidth: .infinity)
         }
-        .frame(minHeight: 380)
     }
 
     private func card(_ asset: PHAsset, index: Int, in decision: GroupDecision, size: CGFloat) -> some View {
@@ -248,6 +265,9 @@ private struct GroupProgressHeader: View {
                 Text("그룹 \(current)/\(total)")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(.white)
+                Text("⏎ 정리 · R 대표 지정 · ⌫ 삭제 토글 · F 즐겨찾기 · ←→ 이동 · Space 확대 · S 건너뛰기")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.subText.opacity(0.7))
                 Spacer()
                 if cleanedCount > 0 {
                     Text("이번 세션 \(cleanedCount)장 정리 · \(String(format: "%.0f", savedMB))MB 확보")

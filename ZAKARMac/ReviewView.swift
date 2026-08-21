@@ -18,8 +18,6 @@ struct ReviewView: View {
     @StateObject private var session = ReviewSession()
 
     @FocusState private var focused: Bool
-    @State private var showQuickLook = false
-    @State private var quickLookIndex = 0
     @AppStorage("reviewGuideShown") private var guideShown = false
     @State private var showGuide = false
 
@@ -50,15 +48,7 @@ struct ReviewView: View {
         .focused($focused)
         .focusEffectDisabled()
         .onAppear { focused = true }
-        .macKeys(handleKey)   // keyCode 기반 — 한글 입력기·포커스 무관
-        .overlay {
-            if showQuickLook {
-                QuickLookOverlay(assets: photoManager.allPhotos,
-                                 index: $quickLookIndex,
-                                 onClose: { showQuickLook = false; focused = true })
-                    .onChange(of: quickLookIndex) { _, i in session.jump(to: i) }
-            }
-        }
+        .macKeys(for: .review, handleKey)   // keyCode 기반 — 한글 입력기·포커스 무관
         .overlay {
             if showGuide {
                 KeyGuideOverlay(onClose: { showGuide = false; guideShown = true; focused = true })
@@ -112,21 +102,26 @@ struct ReviewView: View {
             focused = true
             return true
         }
-        if showQuickLook {
+        if let ql = appState.quickLook {
             switch key {
             case .leftArrow:
-                if quickLookIndex > 0 { quickLookIndex -= 1 }
+                if ql.index > 0 { appState.quickLook?.index = ql.index - 1; session.jump(to: ql.index - 1) }
             case .rightArrow:
-                if quickLookIndex < photoManager.allPhotos.count - 1 { quickLookIndex += 1 }
+                if ql.index < photoManager.allPhotos.count - 1 {
+                    appState.quickLook?.index = ql.index + 1
+                    session.jump(to: ql.index + 1)
+                }
             case .space, .escape:
-                showQuickLook = false
+                appState.quickLook = nil
                 focused = true
             default:
                 break
             }
             return true   // 확대 중에는 뒤쪽 키 동작을 막는다
         }
-        if mods.contains(.command) {
+        // ⌥·⌃가 섞인 조합은 넘긴다 — 안 그러면 ⌘⌥1~3(모드 전환)이
+        // ⌘1~9(앨범 이동)로 오인되어 사진이 조용히 앨범에 들어간다
+        if mods.zakarIsCommandOnly {
             // ⌘Z/⌘⇧Z도 여기서 처리 — 메뉴 단축키는 KeyEquivalent 문자 기반이라
             // 입력기 상태에 따라 매칭이 흔들릴 수 있다 (메뉴 항목 자체는 그대로 둔다)
             if key == .letterZ {
@@ -141,8 +136,15 @@ struct ReviewView: View {
                 return true
             }
             let title = photoManager.albums[n - 1].title
-            session.moveCurrentToAlbum(n - 1, undoManager: undoManager)
-            appState.showToast("‘\(title)’ 앨범으로 이동")
+            session.moveCurrentToAlbum(n - 1, undoManager: undoManager) { success in
+                guard success else {
+                    appState.showToast("‘\(title)’ 앨범에 넣지 못했습니다")
+                    return
+                }
+                appState.showToast("‘\(title)’ 앨범으로 이동")
+                photoManager.fetchUserAlbumsForMac()   // 사이드바 장수 갱신
+                appState.albumRevision += 1            // 앨범 상세 다시 읽기
+            }
             return true
         }
         guard mods.zakarIsPlainKey else { return false }
@@ -152,8 +154,8 @@ struct ReviewView: View {
         case .rightArrow: session.advance()
         case .letterF:    session.toggleFavoriteCurrent(undoManager: undoManager)
         case .space:
-            quickLookIndex = session.currentIndex
-            showQuickLook = true
+            appState.quickLook = QuickLookRequest(assets: photoManager.allPhotos,
+                                                  index: session.currentIndex)
         default: return false
         }
         return true
