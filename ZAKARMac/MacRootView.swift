@@ -88,9 +88,7 @@ struct MacRootView: View {
             case .review:
                 ReviewView()
             case .favorites:
-                MacPlaceholderView(systemImage: "heart",
-                                   title: "즐겨찾기",
-                                   subtitle: "곧 제공됩니다.")
+                FavoritesView()
             case .album(let id):
                 if let album = photoManager.albums.first(where: { $0.id == id }) {
                     AlbumDetailView(album: album)
@@ -117,6 +115,7 @@ struct MacRootView: View {
         photoManager.fetchPhotos()
         photoManager.fetchUserAlbumsForMac()   // 빈 앨범도 ⌘1~9 대상이 되도록 Mac 전용 로더 사용
         photoManager.loadTrash()
+        appState.refreshFavoriteIDs()
         photoManager.analyzeSimilaritiesIfNeeded()
     }
 }

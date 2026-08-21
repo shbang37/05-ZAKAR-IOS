@@ -31,8 +31,58 @@ final class MacAppState: ObservableObject {
     /// Space 확대 미리보기. detail 뷰가 아니라 **루트**에서 그려야
     /// 사이드바까지 덮는 창 전체 확대가 된다 (detail의 .overlay는 detail 영역에 갇힌다).
     @Published var quickLook: QuickLookRequest?
-    /// 앨범에 사진이 추가·제거될 때마다 증가 — 앨범 상세 화면이 이걸 보고 다시 읽는다
-    @Published var albumRevision = 0
+    /// 앨범 추가·제거, 즐겨찾기 변경 때마다 증가.
+    /// 앨범 상세·즐겨찾기 화면이 이걸 보고 목록을 다시 읽는다.
+    @Published var libraryRevision = 0
+
+    /// 즐겨찾기된 사진 id 집합 — **모든 화면이 이 하나를 본다**.
+    /// 화면마다 따로 조회하면 같은 사진이 어디선 하트가 있고 어디선 없는 상태가 된다.
+    /// PHAsset.isFavorite은 페치 시점 스냅샷이라 신뢰할 수 없어 여기서 갱신해 쓴다.
+    @Published private(set) var favoriteIDs: Set<String> = []
+
+    func isFavorite(_ id: String) -> Bool { favoriteIDs.contains(id) }
+
+    /// 라이브러리가 바뀌었음을 알린다 (앨범·즐겨찾기 화면 갱신 + 즐겨찾기 집합 재조회)
+    func bumpLibrary() {
+        libraryRevision += 1
+        refreshFavoriteIDs()
+    }
+
+    func refreshFavoriteIDs() {
+        Task {
+            let ids: Set<String> = await Task.detached(priority: .utility) {
+                let options = PHFetchOptions()
+                options.predicate = NSPredicate(format: "favorite == YES")
+                let result = PHAsset.fetchAssets(with: options)
+                var set: Set<String> = []
+                result.enumerateObjects { asset, _, _ in set.insert(asset.localIdentifier) }
+                return set
+            }.value
+            favoriteIDs = ids
+        }
+    }
+
+    /// 즐겨찾기 설정·해제. 쓰기가 성공한 뒤에만 상태를 갱신한다.
+    func setFavorite(_ id: String, to value: Bool) {
+        guard let asset = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject else { return }
+        PHPhotoLibrary.shared().performChanges({
+            PHAssetChangeRequest(for: asset).isFavorite = value
+        }, completionHandler: { success, error in
+            Task { @MainActor in
+                guard success else {
+                    self.showToast("즐겨찾기를 바꾸지 못했습니다")
+                    print("ZAKAR Log: 즐겨찾기 실패 - \(error?.localizedDescription ?? "알 수 없음")")
+                    return
+                }
+                if value { self.favoriteIDs.insert(id) } else { self.favoriteIDs.remove(id) }
+                self.libraryRevision += 1
+                self.showToast(value ? "즐겨찾기에 추가" : "즐겨찾기 해제")
+            }
+        })
+    }
+
+    /// 현재 값의 반대로 토글
+    func toggleFavorite(_ id: String) { setFavorite(id, to: !isFavorite(id)) }
 
     // MARK: - 키 처리 (앱 전체 단일 NSEvent 모니터)
     // 화면별로 핸들러를 등록하고 현재 선택된 화면의 것만 호출한다.

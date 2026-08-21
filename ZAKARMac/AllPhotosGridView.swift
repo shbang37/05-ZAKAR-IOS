@@ -10,6 +10,7 @@ import AppKit
 
 struct AllPhotosGridView: View {
     @EnvironmentObject var photoManager: PhotoManager
+    @EnvironmentObject var appState: MacAppState
     @StateObject private var prefetcher = ThumbnailPrefetcher()
     @State private var selection: Set<String> = []
 
@@ -91,10 +92,15 @@ struct AllPhotosGridView: View {
                         .padding(6)
                 }
             }
+            .overlay(alignment: .bottomLeading) {
+                if appState.isFavorite(asset.localIdentifier) {
+                    FavoriteHeart().padding(4)
+                }
+            }
             .onTapGesture { toggle(asset) }
             .draggable(asset.localIdentifier)   // 앨범/휴지통으로 드래그
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(isSelected ? "사진, 선택됨" : "사진")
+            .accessibilityLabel(accessibilityLabel(asset, isSelected: isSelected))
             .accessibilityAddTraits(.isButton)
             .onAppear {
                 prefetcher.update(
@@ -103,6 +109,13 @@ struct AllPhotosGridView: View {
                     scale: NSScreen.main?.backingScaleFactor ?? 2.0
                 )
             }
+    }
+
+    private func accessibilityLabel(_ asset: PHAsset, isSelected: Bool) -> String {
+        var parts = ["사진"]
+        if isSelected { parts.append("선택됨") }
+        if appState.isFavorite(asset.localIdentifier) { parts.append("즐겨찾기") }
+        return parts.joined(separator: ", ")
     }
 
     private func toggle(_ asset: PHAsset) {

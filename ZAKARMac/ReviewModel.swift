@@ -27,6 +27,8 @@ final class ReviewSession: ObservableObject {
 
     private weak var photoManager: PhotoManager?
     private weak var flyController: FlyToTrashController?
+    /// 즐겨찾기·앨범처럼 라이브러리를 바꿨을 때 호출 — 즐겨찾기/앨범 화면 갱신용
+    var onLibraryChanged: (() -> Void)?
 
     func configure(_ pm: PhotoManager, _ fly: FlyToTrashController) {
         photoManager = pm
@@ -108,6 +110,7 @@ final class ReviewSession: ObservableObject {
                     return
                 }
                 self.history[id] = value ? .favorited : nil
+                self.onLibraryChanged?()
             }
         })
     }

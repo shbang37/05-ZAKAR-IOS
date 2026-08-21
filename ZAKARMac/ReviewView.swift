@@ -33,6 +33,7 @@ struct ReviewView: View {
         }
         .onAppear {
             session.configure(photoManager, flyController)
+            session.onLibraryChanged = { appState.bumpLibrary() }
             if !guideShown { showGuide = true }
         }
     }
@@ -64,6 +65,11 @@ struct ReviewView: View {
             Text("\(session.currentIndex + 1) / \(photoManager.allPhotos.count)")
                 .font(.callout)
                 .foregroundStyle(AppTheme.subText)
+            if let asset = session.current, appState.isFavorite(asset.localIdentifier) {
+                Label("즐겨찾기", systemImage: "heart.fill")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(AppTheme.gracefulGold)
+            }
             Spacer()
             Text("⌫ 삭제 · F 즐겨찾기 · ⌘1~9 앨범 · ←→ 이동 · Space 확대")
                 .font(.caption)
@@ -143,7 +149,7 @@ struct ReviewView: View {
                 }
                 appState.showToast("‘\(title)’ 앨범으로 이동")
                 photoManager.fetchUserAlbumsForMac()   // 사이드바 장수 갱신
-                appState.albumRevision += 1            // 앨범 상세 다시 읽기
+                appState.bumpLibrary()                 // 앨범 상세 다시 읽기
             }
             return true
         }
@@ -236,6 +242,7 @@ private struct MacLargeImage: View {
 private struct FilmstripView: View {
     @ObservedObject var session: ReviewSession
     @EnvironmentObject var photoManager: PhotoManager
+    @EnvironmentObject var appState: MacAppState
 
     private let cell: CGFloat = 68
 
@@ -274,17 +281,19 @@ private struct FilmstripView: View {
             .draggable(asset.localIdentifier)   // 앨범/휴지통으로 드래그
     }
 
+    /// 즐겨찾기는 세션 이력이 아니라 **실제 라이브러리 상태**를 본다.
+    /// 이력만 보면 지난 세션에 즐겨찾기한 사진에는 하트가 안 뜬다.
     @ViewBuilder
     private func statusIcon(_ asset: PHAsset) -> some View {
         switch session.history[asset.localIdentifier] {
         case .deleted:
             icon("trash.fill", .red)
-        case .favorited:
-            icon("heart.fill", AppTheme.gracefulGold)
         case .moved:
             icon("folder.fill", AppTheme.lavender)
-        case .none:
-            EmptyView()
+        case .favorited, .none:
+            if appState.isFavorite(asset.localIdentifier) {
+                icon("heart.fill", AppTheme.gracefulGold)
+            }
         }
     }
 

@@ -12,6 +12,7 @@ struct SidebarView: View {
     @EnvironmentObject var appState: MacAppState
     @EnvironmentObject var flyController: FlyToTrashController
     @Binding var selection: MacDestination?
+    @State private var favoriteCount = 0
 
     var body: some View {
         List(selection: $selection) {
@@ -29,8 +30,16 @@ struct SidebarView: View {
             }
 
             Section("모음") {
-                Label("즐겨찾기", systemImage: "heart")
-                    .tag(MacDestination.favorites)
+                HStack {
+                    Label("즐겨찾기", systemImage: "heart")
+                    Spacer()
+                    if favoriteCount > 0 {
+                        Text("\(favoriteCount)")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.subText.opacity(0.8))
+                    }
+                }
+                .tag(MacDestination.favorites)
 
                 ForEach(Array(photoManager.albums.enumerated()), id: \.element.id) { index, album in
                     HStack {
@@ -56,7 +65,7 @@ struct SidebarView: View {
                             }
                             appState.showToast("‘\(album.title)’ 앨범에 \(assets.count)장 추가")
                             photoManager.fetchUserAlbumsForMac()
-                            appState.albumRevision += 1
+                            appState.bumpLibrary()
                         }
                         return true
                     }
@@ -93,6 +102,11 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
+        .task(id: appState.libraryRevision) {       // F로 즐겨찾기가 바뀌면 숫자도 따라 바뀐다
+            let options = PHFetchOptions()
+            options.predicate = NSPredicate(format: "favorite == YES")
+            favoriteCount = PHAsset.fetchAssets(with: options).count
+        }
         .safeAreaInset(edge: .bottom) {
             if photoManager.isAnalyzing {
                 AnalysisProgressIndicator(groupCount: photoManager.groupedPhotos.count)
