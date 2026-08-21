@@ -18,6 +18,7 @@ struct GroupCompareView: View {
 
     @State private var focusedIndex = 0        // 현재 그룹 내 포커스된 카드
     @State private var gridWidth: CGFloat = 900 // 카드 크기 계산용 가용 폭
+    @State private var favorites: Set<String> = []   // 이 그룹에서 즐겨찾기된 사진
     @FocusState private var contentFocused: Bool
 
     /// 흡입 발사(정리 전, 카드 프레임 유효할 때) 후 데이터 커밋 — 비차단
@@ -47,11 +48,18 @@ struct GroupCompareView: View {
                                    subtitle: photoManager.isAnalyzing ? "완료된 그룹부터 바로 정리할 수 있어요" : "정리할 유사 사진 그룹이 발견되지 않았습니다.")
             }
         }
-        .task { session.syncGroups(photoManager.groupedPhotos, photoManager: photoManager) }
+        .task {
+            session.syncGroups(photoManager.groupedPhotos, photoManager: photoManager)
+            refreshFavorites()
+        }
         .onChange(of: photoManager.groupedPhotos.count) { _, _ in
             session.syncGroups(photoManager.groupedPhotos, photoManager: photoManager)
         }
-        .onChange(of: session.currentIndex) { _, _ in focusedIndex = 0 }   // 그룹 전환 시 포커스 리셋
+        .onChange(of: session.currentIndex) { _, _ in
+            focusedIndex = 0                      // 그룹 전환 시 포커스 리셋
+            refreshFavorites()
+        }
+        .onChange(of: session.decisions.count) { _, _ in refreshFavorites() }
     }
 
     // MARK: - 본문
@@ -167,12 +175,36 @@ struct GroupCompareView: View {
     private func favoriteFocused(_ decision: GroupDecision) {
         guard decision.assets.indices.contains(focusedIndex) else { return }
         let asset = decision.assets[focusedIndex]
+        let id = asset.localIdentifier
         // 캐시된 PHAsset은 스냅샷이라 isFavorite이 갱신되지 않는다 — 최신 값을 다시 읽는다
-        let fresh = PHAsset.fetchAssets(withLocalIdentifiers: [asset.localIdentifier], options: nil).firstObject
+        let fresh = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject
         let newValue = !(fresh?.isFavorite ?? asset.isFavorite)
         PHPhotoLibrary.shared().performChanges({
             PHAssetChangeRequest(for: fresh ?? asset).isFavorite = newValue
-        }, completionHandler: { _, _ in })
+        }, completionHandler: { success, error in
+            Task { @MainActor in
+                guard success else {
+                    appState.showToast("즐겨찾기를 바꾸지 못했습니다")
+                    print("ZAKAR Log: 즐겨찾기 실패 - \(error?.localizedDescription ?? "알 수 없음")")
+                    return
+                }
+                if newValue { favorites.insert(id) } else { favorites.remove(id) }
+                appState.showToast(newValue ? "즐겨찾기에 추가" : "즐겨찾기 해제")
+            }
+        })
+    }
+
+    /// 그룹의 즐겨찾기 상태를 라이브러리에서 다시 읽는다.
+    /// groupedPhotos에 담긴 PHAsset은 분석 시점 스냅샷이라 isFavorite이 오래됐다.
+    private func refreshFavorites() {
+        guard let decision = session.current else { favorites = []; return }
+        let ids = decision.assets.map { $0.localIdentifier }
+        let fetch = PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil)
+        var result: Set<String> = []
+        fetch.enumerateObjects { asset, _, _ in
+            if asset.isFavorite { result.insert(asset.localIdentifier) }
+        }
+        favorites = result
     }
 
     /// 카드 격자.
@@ -216,6 +248,7 @@ struct GroupCompareView: View {
             size: size,
             isRepresentative: decision.isRepresentative(asset),
             isKept: decision.isKept(asset),
+            isFavorite: favorites.contains(asset.localIdentifier),
             onToggle: { focusedIndex = index; session.toggleKeep(asset) },
             onMakeRepresentative: { session.setRepresentative(asset) }
         )

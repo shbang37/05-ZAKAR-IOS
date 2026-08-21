@@ -94,13 +94,22 @@ final class ReviewSession: ObservableObject {
         undoManager?.setActionName("즐겨찾기 취소")
     }
 
+    /// 즐겨찾기 기록(필름스트립 하트)은 **라이브러리 쓰기가 성공한 뒤** 갱신한다.
+    /// 결과를 버리고 미리 표시하면 실패했는데 하트가 남아 "됐다"고 오해하게 된다.
     func setFavorite(id: String, to value: Bool) {
         let fetch = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil)
         guard let asset = fetch.firstObject else { return }
         PHPhotoLibrary.shared().performChanges({
             PHAssetChangeRequest(for: asset).isFavorite = value
-        }, completionHandler: { _, _ in })
-        history[id] = value ? .favorited : nil
+        }, completionHandler: { success, error in
+            Task { @MainActor in
+                guard success else {
+                    print("ZAKAR Log: 즐겨찾기 실패 - \(error?.localizedDescription ?? "알 수 없음")")
+                    return
+                }
+                self.history[id] = value ? .favorited : nil
+            }
+        })
     }
 
     /// 사진을 앨범에 실제로 추가한다. PhotoKit 쓰기가 실패할 수 있으므로

@@ -13,6 +13,7 @@ struct ComparableThumbnail: View {
     let size: CGFloat
     let isRepresentative: Bool
     let isKept: Bool
+    let isFavorite: Bool
     let onToggle: () -> Void
     let onMakeRepresentative: () -> Void
 
@@ -23,7 +24,7 @@ struct ComparableThumbnail: View {
 
     private var a11yLabel: String {
         let state = isRepresentative ? "대표" : (isDelete ? "삭제 예정" : "유지")
-        return "사진, \(state)"
+        return isFavorite ? "사진, \(state), 즐겨찾기" : "사진, \(state)"
     }
 
     var body: some View {
@@ -67,6 +68,22 @@ struct ComparableThumbnail: View {
                 } else {
                     badge(text: "유지", bg: .white.opacity(0.85), fg: AppTheme.deepPurple, alignment: .topLeading)
                 }
+            }
+
+            // 즐겨찾기 (F) — 눌러도 표시가 없으면 됐는지 알 수 없다
+            if isFavorite {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Image(systemName: "heart.fill")
+                            .font(.callout)
+                            .foregroundStyle(AppTheme.gracefulGold)
+                            .padding(6)
+                            .background(Circle().fill(.black.opacity(0.55)))
+                        Spacer()
+                    }
+                }
+                .padding(8)
             }
 
             // hover 시 대표 지정 버튼 (비대표 카드만)
