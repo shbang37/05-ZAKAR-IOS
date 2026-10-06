@@ -2,7 +2,7 @@ import SwiftUI
 
 // ============================================================
 // MacCommands — 메뉴바 명령 (HIG: 단축키 발견 가능성)
-// 보기: 모드 전환 (⌘⌥1/2/3) · 편집: Undo/Redo 자리 (Phase 7에서 실제 연결)
+// 보기: 모드 전환 (⌘⌥1/2) · 편집: Undo/Redo 자리 (Phase 7에서 실제 연결)
 // ============================================================
 
 struct MacCommands: Commands {
@@ -26,12 +26,13 @@ struct MacCommands: Commands {
 
         // 보기 메뉴 — 모드 전환
         CommandMenu("보기") {
-            Button("모든 사진") { appState.selection = .allPhotos }
-                .keyboardShortcut("1", modifiers: [.command, .option])
+            Button("모든 사진") {
+                appState.endReview()            // 리뷰 중이면 격자로
+                appState.selection = .allPhotos
+            }
+            .keyboardShortcut("1", modifiers: [.command, .option])
             Button("유사 그룹") { appState.selection = .similarGroups }
                 .keyboardShortcut("2", modifiers: [.command, .option])
-            Button("리뷰") { appState.selection = .review }
-                .keyboardShortcut("3", modifiers: [.command, .option])
             Divider()
             Button("휴지통") { appState.selection = .trash }
                 .keyboardShortcut(.delete, modifiers: [.command, .shift])

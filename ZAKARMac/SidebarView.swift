@@ -3,7 +3,7 @@ import Photos
 
 // ============================================================
 // SidebarView — NavigationSplitView 사이드바
-// 섹션: 라이브러리(리뷰/유사 그룹/모든 사진 — 자주 쓰는 순) · 모음(즐겨찾기/앨범 ⌘1~9) · 휴지통(골드 배지)
+// 섹션: 라이브러리(모든 사진[리뷰 포함]/유사 그룹) · 모음(즐겨찾기/앨범 ⌘1~9) · 휴지통(골드 배지)
 // 하단: 유사 분석 진행 표시. 사이드바 vibrancy는 .listStyle(.sidebar) 기본 제공.
 // ============================================================
 
@@ -17,16 +17,14 @@ struct SidebarView: View {
     var body: some View {
         List(selection: $selection) {
             Section("라이브러리") {
-                Label("리뷰", systemImage: "eye")
-                    .tag(MacDestination.review)
+                // 리뷰는 "모든 사진" 안에 있다 (더블클릭·⏎로 들어감)
+                Label("모든 사진", systemImage: "photo.on.rectangle")
+                    .badge(photoManager.allPhotos.count)
+                    .tag(MacDestination.allPhotos)
 
                 Label("유사 그룹", systemImage: "square.on.square")
                     .badge(photoManager.groupedPhotos.count)
                     .tag(MacDestination.similarGroups)
-
-                Label("모든 사진", systemImage: "photo.on.rectangle")
-                    .badge(photoManager.allPhotos.count)
-                    .tag(MacDestination.allPhotos)
             }
 
             Section("모음") {
@@ -93,6 +91,7 @@ struct SidebarView: View {
                     let assets = fetchAssets(ids)
                     guard !assets.isEmpty else { return false }
                     photoManager.addToTrashUndoably(assets, undo: appState.undo)
+                    appState.showToast("휴지통으로 \(assets.count)장 — ⌘Z로 되돌릴 수 있어요")
                     return true
                 }
             }
@@ -110,12 +109,17 @@ struct SidebarView: View {
         }
     }
 
-    private func fetchAssets(_ ids: [String]) -> [PHAsset] {
+    /// 드롭된 id → PHAsset. 모든 사진에서 여러 장을 끌면 id들이 줄바꿈으로 이어져 한 덩어리로 온다.
+    /// 끈 순서(격자 순서)를 지킨다 — fetchAssets 결과 순서는 보장되지 않는다.
+    private func fetchAssets(_ items: [String]) -> [PHAsset] {
+        var seen = Set<String>()
+        let ids = items.flatMap { $0.split(separator: "\n").map(String.init) }
+            .filter { seen.insert($0).inserted }
         guard !ids.isEmpty else { return [] }
         let fetch = PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil)
-        var result: [PHAsset] = []
-        fetch.enumerateObjects { asset, _, _ in result.append(asset) }
-        return result
+        var byID: [String: PHAsset] = [:]
+        fetch.enumerateObjects { asset, _, _ in byID[asset.localIdentifier] = asset }
+        return ids.compactMap { byID[$0] }
     }
 }
 

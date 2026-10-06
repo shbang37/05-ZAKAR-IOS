@@ -15,7 +15,8 @@ struct GroupCompareView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// 포커스와 무관하게 동작하도록 앱 소유 UndoManager 사용 (MacAppState 주석 참고)
     private var undoManager: UndoManager { appState.undo }
-    @StateObject private var session = GroupCompareSession()
+    /// 앱(MacAppState)이 소유 — 다른 화면에 갔다 와도 보던 그룹이 이어지고, 떠난 뒤에도 ⌘Z가 먹는다
+    @ObservedObject var session: GroupCompareSession
 
     @State private var focusedIndex = 0        // 현재 그룹 내 포커스된 카드
     @State private var gridWidth: CGFloat = 900 // 카드 크기 계산용 가용 폭

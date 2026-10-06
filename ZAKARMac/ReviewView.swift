@@ -3,9 +3,10 @@ import Photos
 import AppKit
 
 // ============================================================
-// ReviewView — 리뷰 모드 (키보드 대량 선별)
+// ReviewView — 리뷰 (키보드 대량 선별). "모든 사진" 안의 한 장씩 보기.
 // 대형 프리뷰(2단계 로드+프리페치) + 필름스트립 + 첫 실행 단축키 안내.
-// 키: ⌫ 삭제 · F 즐겨찾기 · ⌘1~9 앨범 · ←→ 이동 · Space 확대.
+// 키: ⌫ 삭제 · F 즐겨찾기 · ⌘1~9 앨범 · ←→ 이동 · Space 확대 · Esc 모든 사진으로.
+// 들어가기: 격자 더블클릭·⏎·리뷰 시작 버튼 (MacAppState.startReview)
 // ============================================================
 
 struct ReviewView: View {
@@ -15,7 +16,8 @@ struct ReviewView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// 포커스와 무관하게 동작하도록 앱 소유 UndoManager 사용 (MacAppState 주석 참고)
     private var undoManager: UndoManager { appState.undo }
-    @StateObject private var session = ReviewSession()
+    /// 앱(MacAppState)이 소유 — 격자로 나갔다 와도 ⌘Z가 대상을 잃지 않는다
+    @ObservedObject var session: ReviewSession
 
     @FocusState private var focused: Bool
     @AppStorage("reviewGuideShown") private var guideShown = false
@@ -37,8 +39,10 @@ struct ReviewView: View {
                 photoManager.fetchUserAlbumsForMac()   // 사이드바 앨범 장수
                 appState.bumpLibrary()                 // 앨범·즐겨찾기 화면 다시 읽기
             }
+            session.jump(to: appState.reviewIndex)   // 더블클릭한 사진부터
             if !guideShown { showGuide = true }
         }
+        .onChange(of: session.currentIndex) { _, i in appState.reviewIndex = i }   // 나갈 때 격자가 이 사진을 보여 준다
     }
 
     private var content: some View {
@@ -62,6 +66,18 @@ struct ReviewView: View {
 
     private var header: some View {
         HStack {
+            Button { appState.endReview() } label: {
+                Label("모든 사진", systemImage: "chevron.left")
+                    .font(.callout.weight(.medium))
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(Capsule().fill(Color.white.opacity(0.08)))
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(AppTheme.gracefulGold)
+            .help("모든 사진으로 돌아가기 (Esc)")
+            .padding(.trailing, 6)
+
             Text("리뷰")
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(.white)
@@ -74,7 +90,7 @@ struct ReviewView: View {
                     .foregroundStyle(AppTheme.gracefulGold)
             }
             Spacer()
-            Text("⌫ 삭제 · F 즐겨찾기 · ⌘1~9 앨범 · ←→ 이동 · Space 확대")
+            Text("⌫ 삭제 · F 즐겨찾기 · ⌘1~9 앨범 · ←→ 이동 · Space 확대 · Esc 돌아가기")
                 .font(.caption)
                 .foregroundStyle(AppTheme.subText.opacity(0.7))
         }
@@ -155,6 +171,7 @@ struct ReviewView: View {
         case .leftArrow:  session.back()
         case .rightArrow: session.advance()
         case .letterF:    session.toggleFavoriteCurrent(undoManager: undoManager)
+        case .escape:     appState.endReview()   // 확대 중이면 위에서 확대가 먼저 닫힌다
         case .space:
             appState.quickLook = QuickLookRequest(assets: photoManager.allPhotos,
                                                   index: session.currentIndex)
@@ -315,6 +332,7 @@ private struct KeyGuideOverlay: View {
         ("⌘1 ~ ⌘9", "지정 앨범으로 이동"),
         ("← →", "이전 / 다음 사진"),
         ("Space", "크게 보기"),
+        ("Esc", "모든 사진으로 돌아가기"),
     ]
 
     var body: some View {

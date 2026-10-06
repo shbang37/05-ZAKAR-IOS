@@ -16,7 +16,38 @@ struct QuickLookRequest {
 
 @MainActor
 final class MacAppState: ObservableObject {
-    @Published var selection: MacDestination? = .allPhotos
+    @Published var selection: MacDestination? = .allPhotos {
+        didSet { if selection != .allPhotos { isReviewing = false } }   // 다른 화면에 갔다 오면 격자부터
+    }
+
+    // MARK: - 리뷰 (모든 사진 안의 한 장씩 보기)
+    // 리뷰는 사이드바 항목이 아니라 "모든 사진"의 다른 보기다.
+    // 더블클릭·⏎·리뷰 시작 버튼으로 들어가고, Esc·← 모든 사진으로 나온다.
+
+    @Published private(set) var isReviewing = false
+    /// 격자와 리뷰가 함께 쓰는 위치 — 들어갈 때 시작 사진, 나올 때 격자가 보여 줄 사진.
+    /// 화살표마다 바뀌므로 발행하지 않는다 (루트 전체가 다시 그려지지 않도록).
+    var reviewIndex = 0
+    /// 리뷰에서 막 나왔을 때 격자가 스크롤·선택할 사진. 격자가 한 번 쓰고 비운다.
+    var pendingGridFocus: Int?
+
+    /// 진행 상태를 화면이 아니라 앱이 들고 있어야 화면을 오가도 이어지고,
+    /// 화면을 떠난 뒤에도 ⌘Z가 대상(세션)을 잃지 않는다.
+    let reviewSession = ReviewSession()
+    let groupSession = GroupCompareSession()
+
+    func startReview(at index: Int) {
+        reviewIndex = max(0, index)
+        selection = .allPhotos
+        isReviewing = true
+    }
+
+    func endReview() {
+        guard isReviewing else { return }
+        quickLook = nil
+        pendingGridFocus = reviewIndex
+        isReviewing = false
+    }
 
     /// 앱이 직접 소유하는 UndoManager.
     /// `@Environment(\.undoManager)`는 해당 뷰가 first responder 체인에 있을 때만 유효한데,
@@ -121,7 +152,10 @@ final class MacAppState: ObservableObject {
             mods.contains(.shift) ? performRedo() : performUndo()
             return true
         }
-        guard let destination = selection, let handler = keyHandlers[destination] else { return false }
+        guard let selected = selection else { return false }
+        // 리뷰는 "모든 사진" 안에 있지만 키는 따로 받는다 (격자의 ⏎와 리뷰의 ⌫·F가 섞이지 않게)
+        let destination: MacDestination = (selected == .allPhotos && isReviewing) ? .review : selected
+        guard let handler = keyHandlers[destination] else { return false }
         return handler(key, mods)
     }
 

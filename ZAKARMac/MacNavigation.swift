@@ -7,6 +7,7 @@ import SwiftUI
 enum MacDestination: Hashable {
     case allPhotos
     case similarGroups
+    /// 사이드바 항목이 아니라 "모든 사진" 안의 리뷰 보기 — 키 처리 범위 구분용으로만 쓴다
     case review
     case favorites
     case album(id: String)

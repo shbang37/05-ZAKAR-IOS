@@ -81,12 +81,14 @@ struct MacRootView: View {
                                subtitle: "시스템 설정 → 개인정보 보호 및 보안 → 사진에서 ZAKAR Mac을 허용해 주세요.")
         } else {
             switch appState.selection ?? .allPhotos {
-            case .allPhotos:
-                AllPhotosGridView()
+            case .allPhotos, .review:
+                if appState.isReviewing {
+                    ReviewView(session: appState.reviewSession)
+                } else {
+                    AllPhotosGridView()
+                }
             case .similarGroups:
-                GroupCompareView()
-            case .review:
-                ReviewView()
+                GroupCompareView(session: appState.groupSession)
             case .favorites:
                 FavoritesView()
             case .album(let id):
