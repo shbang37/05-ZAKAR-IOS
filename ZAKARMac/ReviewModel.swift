@@ -63,7 +63,7 @@ final class ReviewSession: ObservableObject {
         undoManager?.registerUndo(withTarget: self) { s in
             s.undoDelete(id: id, wasAdded: wasAdded, index: index, undoManager: undoManager)
         }
-        undoManager?.setActionName("삭제 취소")
+        undoManager?.setActionName("삭제")
         advance()
     }
 
@@ -78,7 +78,7 @@ final class ReviewSession: ObservableObject {
         undoManager?.registerUndo(withTarget: self) { s in
             s.deleteCurrent(reduceMotion: true, undoManager: undoManager)
         }
-        undoManager?.setActionName("삭제 취소")
+        undoManager?.setActionName("삭제")
     }
 
     func toggleFavoriteCurrent(undoManager: UndoManager? = nil) {
@@ -90,10 +90,10 @@ final class ReviewSession: ObservableObject {
         setFavorite(id: asset.localIdentifier, to: newValue)
         undoManager?.registerUndo(withTarget: self) { s in
             s.setFavorite(id: asset.localIdentifier, to: !newValue)
-            undoManager?.setActionName("즐겨찾기 취소")
+            undoManager?.setActionName("즐겨찾기")
             undoManager?.registerUndo(withTarget: s) { s2 in s2.setFavorite(id: asset.localIdentifier, to: newValue) }
         }
-        undoManager?.setActionName("즐겨찾기 취소")
+        undoManager?.setActionName("즐겨찾기")
     }
 
     /// 즐겨찾기 기록(필름스트립 하트)은 **라이브러리 쓰기가 성공한 뒤** 갱신한다.
@@ -125,14 +125,17 @@ final class ReviewSession: ObservableObject {
         }
         let album = pm.albums[index]
         let assetIndex = currentIndex
-        pm.addAssets([asset], toAlbum: album.collection) { success in onResult?(success) }
+        pm.addAssets([asset], toAlbum: album.collection) { [weak self] success in
+            if success { self?.onLibraryChanged?() }   // 다시 실행(⌘⇧Z) 때도 장수가 갱신되도록
+            onResult?(success)
+        }
         history[asset.localIdentifier] = .moved(album.title)
 
         let id = asset.localIdentifier
         undoManager?.registerUndo(withTarget: self) { s in
             s.undoMoveToAlbum(id: id, albumIndex: index, assetIndex: assetIndex, undoManager: undoManager)
         }
-        undoManager?.setActionName("앨범 이동 취소")
+        undoManager?.setActionName("앨범으로 이동")
         advance()
     }
 
@@ -146,12 +149,14 @@ final class ReviewSession: ObservableObject {
             if let req = PHAssetCollectionChangeRequest(for: album.collection) {
                 req.removeAssets([asset] as NSArray)
             }
-        }, completionHandler: { _, _ in })
+        }, completionHandler: { success, _ in
+            Task { @MainActor in if success { self.onLibraryChanged?() } }   // 사이드바 장수·앨범 화면 갱신
+        })
         history[id] = nil
         jump(to: assetIndex)
         undoManager?.registerUndo(withTarget: self) { s in
             s.moveCurrentToAlbum(albumIndex, undoManager: undoManager)
         }
-        undoManager?.setActionName("앨범 이동 취소")
+        undoManager?.setActionName("앨범으로 이동")
     }
 }

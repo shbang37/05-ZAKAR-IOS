@@ -4,7 +4,8 @@ import Photos
 // ============================================================
 // GroupCompareView — 그룹 비교 모드 (차별화 기능)
 // 헤더(진행률) + 사진 카드(≤5장 1행, 초과 시 격자) + 액션 바.
-// 키보드: ⏎ 정리 · R 대표 지정 · S 건너뛰기 · ←→ 포커스 · ⌫ 삭제 토글 · F 즐겨찾기 · Space 확대.
+// 키보드: ⏎ 정리 · R 대표 지정 · S 건너뛰기 · A 이전 그룹 · ←→ 포커스 · ⌫ 삭제 토글 · F 즐겨찾기 · Space 확대.
+// ⌘Z는 MacAppState가 앱 전체에서 처리한다 (이 화면의 모든 동작이 되돌리기 대상).
 // ============================================================
 
 struct GroupCompareView: View {
@@ -47,6 +48,8 @@ struct GroupCompareView: View {
                                    subtitle: photoManager.isAnalyzing ? "완료된 그룹부터 바로 정리할 수 있어요" : "정리할 유사 사진 그룹이 발견되지 않았습니다.")
             }
         }
+        // 완료 화면에서도 A(이전 그룹)가 먹도록 콘텐츠가 아니라 화면 전체에 단다
+        .macKeys(for: .similarGroups) { handleKey($0, $1) }   // keyCode 기반 — 한글 입력기·포커스 무관
         .task { session.syncGroups(photoManager.groupedPhotos, photoManager: photoManager) }
         .onChange(of: photoManager.groupedPhotos.count) { _, _ in
             session.syncGroups(photoManager.groupedPhotos, photoManager: photoManager)
@@ -60,6 +63,7 @@ struct GroupCompareView: View {
         VStack(spacing: 0) {
             GroupProgressHeader(current: session.currentIndex + 1,
                                 total: session.decisions.count,
+                                isCleaned: decision.cleaned,
                                 cleanedCount: session.cleanedCount,
                                 savedMB: session.savedMB)
             Divider().overlay(AppTheme.divider)
@@ -85,27 +89,29 @@ struct GroupCompareView: View {
             GroupActionBar(deleteCount: decision.assets.count - 1,
                            selectedDeleteCount: decision.deleteCount,
                            onKeepRepresentative: { performClean(keepOnlyRepresentative: true) },
+                           canGoBack: session.canGoBack,
                            onApplySelection: { performClean(keepOnlyRepresentative: false) },
-                           onSkip: { session.skipCurrent() })
+                           onSkip: { session.skipCurrent(undoManager: undoManager) },
+                           onBack: { session.goBack() })
         }
         // 콘텐츠 영역 단일 focusable — 텍스트 필드가 없으므로 키가 항상 여기로 전달됨
         .focusable()
         .focused($contentFocused)
         .focusEffectDisabled()
         .onAppear { contentFocused = true }
-        .macKeys(for: .similarGroups) { handleKey($0, $1, decision) }   // keyCode 기반 — 한글 입력기·포커스 무관
     }
 
     // MARK: - 키보드 동작
 
     /// 키 처리 — QuickLook이 떠 있으면 오버레이 동작이 우선.
-    private func handleKey(_ key: MacKey, _ mods: NSEvent.ModifierFlags, _ decision: GroupDecision) -> Bool {
-        // ⌘Z/⌘⇧Z는 여기서 처리 (메뉴 단축키는 입력기 상태에 흔들릴 수 있음)
-        if mods.zakarIsCommandOnly, key == .letterZ {
-            mods.contains(.shift) ? undoManager.redo() : undoManager.undo()
+    private func handleKey(_ key: MacKey, _ mods: NSEvent.ModifierFlags) -> Bool {
+        guard mods.zakarIsPlainKey else { return false }   // ⌘·⌥ 조합은 시스템/메뉴에 양보
+        guard let decision = session.current else {
+            // 완료·분석 대기 화면 — 마지막 그룹으로 돌아갈 수만 있다
+            guard key == .letterA, appState.quickLook == nil else { return false }
+            session.goBack()
             return true
         }
-        guard mods.zakarIsPlainKey else { return false }   // 나머지 ⌘·⌥ 조합은 시스템/메뉴에 양보
 
         if let ql = appState.quickLook {
             switch key {
@@ -131,7 +137,8 @@ struct GroupCompareView: View {
         case .leftArrow:  moveFocus(-1, in: decision)
         case .rightArrow: moveFocus(1, in: decision)
         case .delete:     toggleFocusedDelete(decision)
-        case .letterS:    session.skipCurrent()
+        case .letterS:    session.skipCurrent(undoManager: undoManager)
+        case .letterA:    session.goBack()
         case .letterR:    makeFocusedRepresentative(decision)
         case .letterF:    favoriteFocused(decision)
         default: return false
@@ -155,13 +162,13 @@ struct GroupCompareView: View {
         guard decision.assets.indices.contains(focusedIndex) else { return }
         let asset = decision.assets[focusedIndex]
         guard !decision.isRepresentative(asset) else { return }
-        session.setRepresentative(asset)
+        session.setRepresentative(asset, undoManager: undoManager)
         appState.showToast("대표 사진을 바꿨습니다")
     }
 
     private func toggleFocusedDelete(_ decision: GroupDecision) {
         guard decision.assets.indices.contains(focusedIndex) else { return }
-        session.toggleKeep(decision.assets[focusedIndex])
+        session.toggleKeep(decision.assets[focusedIndex], undoManager: undoManager)
     }
 
     private func favoriteFocused(_ decision: GroupDecision) {
@@ -211,8 +218,8 @@ struct GroupCompareView: View {
             isRepresentative: decision.isRepresentative(asset),
             isKept: decision.isKept(asset),
             isFavorite: appState.isFavorite(asset.localIdentifier),
-            onToggle: { focusedIndex = index; session.toggleKeep(asset) },
-            onMakeRepresentative: { session.setRepresentative(asset) }
+            onToggle: { focusedIndex = index; session.toggleKeep(asset, undoManager: undoManager) },
+            onMakeRepresentative: { session.setRepresentative(asset, undoManager: undoManager) }
         )
         // 키보드 포커스 링 (골드 대표/선택과 구분되는 흰 링)
         .overlay {
@@ -241,6 +248,16 @@ struct GroupCompareView: View {
             Text("휴지통을 비우면 실제 저장 공간이 확보됩니다.")
                 .font(.callout)
                 .foregroundStyle(AppTheme.subText.opacity(0.8))
+            if session.canGoBack {
+                Button { session.goBack() } label: {
+                    Text("←  이전 그룹 다시 보기  A")
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(AppTheme.gracefulGold)
+                .padding(.top, 8)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -251,6 +268,7 @@ struct GroupCompareView: View {
 private struct GroupProgressHeader: View {
     let current: Int
     let total: Int
+    let isCleaned: Bool
     let cleanedCount: Int
     let savedMB: Double
 
@@ -260,7 +278,14 @@ private struct GroupProgressHeader: View {
                 Text("그룹 \(current)/\(total)")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(.white)
-                Text("⏎ 정리 · R 대표 지정 · ⌫ 삭제 토글 · F 즐겨찾기 · ←→ 이동 · Space 확대 · S 건너뛰기")
+                if isCleaned {
+                    Text("정리됨 · 바꾸고 다시 반영할 수 있어요")
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Capsule().fill(AppTheme.gracefulGold.opacity(0.2)))
+                        .foregroundStyle(AppTheme.gracefulGold)
+                }
+                Text("⏎ 정리 · R 대표 지정 · ⌫ 삭제 토글 · F 즐겨찾기 · ←→ 이동 · Space 확대 · A 이전 · S 건너뛰기 · ⌘Z 되돌리기")
                     .font(.caption)
                     .foregroundStyle(AppTheme.subText.opacity(0.7))
                 Spacer()
@@ -284,14 +309,27 @@ private struct GroupActionBar: View {
     let deleteCount: Int            // 대표만 남길 때 삭제 장수 (Primary)
     let selectedDeleteCount: Int    // 현재 선택 기준 삭제 장수 (Secondary)
     let onKeepRepresentative: () -> Void
+    let canGoBack: Bool
     let onApplySelection: () -> Void
     let onSkip: () -> Void
+    let onBack: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
+            Button(action: onBack) {
+                Text("←  이전 그룹  A")
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .contentShape(Rectangle())   // 글자 사이 빈 곳도 눌리게
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(AppTheme.subText)
+            .opacity(canGoBack ? 1 : 0.35)
+            .disabled(!canGoBack)
+
             Button(action: onSkip) {
                 Text("이 그룹 건너뛰기  S")
                     .padding(.horizontal, 16).padding(.vertical, 10)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .foregroundStyle(AppTheme.subText)

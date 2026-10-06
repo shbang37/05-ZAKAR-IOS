@@ -81,3 +81,88 @@ extension PhotoManager {
         return id
     }
 }
+
+// ============================================================
+// 되돌릴 수 있는 라이브러리 변경 (⌘Z / ⌘⇧Z)
+// 되돌리기 안에서 반대 동작을 다시 "되돌릴 수 있게" 부르므로 다시 실행도 자동으로 쌓인다.
+// 휴지통 비우기(영구 삭제)만 예외 — 사진 앱에서 지워진 사진은 되살릴 수 없다.
+// ============================================================
+
+extension PhotoManager {
+    /// 휴지통에 넣기 (이미 들어 있는 사진은 건너뛴다)
+    func addToTrashUndoably(_ assets: [PHAsset], undo: UndoManager, actionName: String = "휴지통으로 이동") {
+        var seen = Set(trashAssets.map { $0.localIdentifier })
+        let toAdd = assets.filter { seen.insert($0.localIdentifier).inserted }
+        guard !toAdd.isEmpty else { return }
+        trashAssets.append(contentsOf: toAdd)
+        saveTrash()
+        undo.registerUndo(withTarget: self) { pm in
+            pm.restoreFromTrashUndoably(toAdd, undo: undo, actionName: actionName)
+        }
+        undo.setActionName(actionName)
+    }
+
+    /// 휴지통에서 꺼내기. 되돌리면 **원래 자리**로 돌아간다 (끝에 붙이면 순서가 뒤섞여 보인다).
+    func restoreFromTrashUndoably(_ assets: [PHAsset], undo: UndoManager, actionName: String = "복원") {
+        let ids = Set(assets.map { $0.localIdentifier })
+        let removed = trashAssets.enumerated()
+            .filter { ids.contains($0.element.localIdentifier) }
+            .map { (index: $0.offset, asset: $0.element) }
+        guard !removed.isEmpty else { return }
+        trashAssets.removeAll { ids.contains($0.localIdentifier) }
+        saveTrash()
+        undo.registerUndo(withTarget: self) { pm in
+            pm.reinsertIntoTrash(removed, undo: undo, actionName: actionName)
+        }
+        undo.setActionName(actionName)
+    }
+
+    private func reinsertIntoTrash(_ removed: [(index: Int, asset: PHAsset)],
+                                   undo: UndoManager, actionName: String) {
+        var existing = Set(trashAssets.map { $0.localIdentifier })
+        for item in removed.sorted(by: { $0.index < $1.index })
+        where existing.insert(item.asset.localIdentifier).inserted {
+            trashAssets.insert(item.asset, at: min(item.index, trashAssets.count))
+        }
+        saveTrash()
+        undo.registerUndo(withTarget: self) { pm in
+            pm.restoreFromTrashUndoably(removed.map(\.asset), undo: undo, actionName: actionName)
+        }
+        undo.setActionName(actionName)
+    }
+
+    /// 앨범에 넣기. 되돌리면 **이번에 새로 들어간 사진만** 뺀다 (원래 있던 사진까지 빼면 안 된다).
+    /// `onChange`는 넣기·빼기 어느 쪽이든 성공하면 불린다 — 사이드바 장수·앨범 화면 갱신용.
+    func addToAlbumUndoably(_ assets: [PHAsset], album: AlbumInfo, undo: UndoManager,
+                            completion: @escaping (Bool) -> Void = { _ in },
+                            onChange: @escaping () -> Void) {
+        var inAlbum = Set<String>()
+        PHAsset.fetchAssets(in: album.collection, options: nil)
+            .enumerateObjects { asset, _, _ in inAlbum.insert(asset.localIdentifier) }
+        let newOnes = assets.filter { !inAlbum.contains($0.localIdentifier) }
+
+        undo.registerUndo(withTarget: self) { pm in
+            pm.removeFromAlbumUndoably(newOnes, album: album, undo: undo, onChange: onChange)
+        }
+        undo.setActionName("‘\(album.title)’ 앨범에 넣기")
+        addAssets(assets, toAlbum: album.collection) { success in
+            if success { onChange() }
+            completion(success)
+        }
+    }
+
+    func removeFromAlbumUndoably(_ assets: [PHAsset], album: AlbumInfo, undo: UndoManager,
+                                 onChange: @escaping () -> Void) {
+        undo.registerUndo(withTarget: self) { pm in
+            pm.addToAlbumUndoably(assets, album: album, undo: undo, onChange: onChange)
+        }
+        undo.setActionName("‘\(album.title)’ 앨범에 넣기")
+        guard !assets.isEmpty else { return }
+        PHPhotoLibrary.shared().performChanges({
+            PHAssetCollectionChangeRequest(for: album.collection)?.removeAssets(assets as NSArray)
+        }, completionHandler: { success, error in
+            if let error { print("ZAKAR Log: 앨범에서 빼기 실패 - \(error.localizedDescription)") }
+            Task { @MainActor in if success { onChange() } }
+        })
+    }
+}

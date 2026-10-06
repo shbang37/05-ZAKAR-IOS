@@ -33,7 +33,10 @@ struct ReviewView: View {
         }
         .onAppear {
             session.configure(photoManager, flyController)
-            session.onLibraryChanged = { appState.bumpLibrary() }
+            session.onLibraryChanged = {
+                photoManager.fetchUserAlbumsForMac()   // 사이드바 앨범 장수
+                appState.bumpLibrary()                 // 앨범·즐겨찾기 화면 다시 읽기
+            }
             if !guideShown { showGuide = true }
         }
     }
@@ -128,12 +131,7 @@ struct ReviewView: View {
         // ⌥·⌃가 섞인 조합은 넘긴다 — 안 그러면 ⌘⌥1~3(모드 전환)이
         // ⌘1~9(앨범 이동)로 오인되어 사진이 조용히 앨범에 들어간다
         if mods.zakarIsCommandOnly {
-            // ⌘Z/⌘⇧Z도 여기서 처리 — 메뉴 단축키는 KeyEquivalent 문자 기반이라
-            // 입력기 상태에 따라 매칭이 흔들릴 수 있다 (메뉴 항목 자체는 그대로 둔다)
-            if key == .letterZ {
-                mods.contains(.shift) ? undoManager.redo() : undoManager.undo()
-                return true
-            }
+            // ⌘Z/⌘⇧Z는 MacAppState가 앱 전체에서 먼저 처리한다
             guard case .digit(let n) = key else { return false }
             guard photoManager.albums.indices.contains(n - 1) else {
                 appState.showToast(photoManager.albums.isEmpty
@@ -147,9 +145,7 @@ struct ReviewView: View {
                     appState.showToast("‘\(title)’ 앨범에 넣지 못했습니다")
                     return
                 }
-                appState.showToast("‘\(title)’ 앨범으로 이동")
-                photoManager.fetchUserAlbumsForMac()   // 사이드바 장수 갱신
-                appState.bumpLibrary()                 // 앨범 상세 다시 읽기
+                appState.showToast("‘\(title)’ 앨범으로 이동")   // 장수 갱신은 onLibraryChanged가 한다
             }
             return true
         }

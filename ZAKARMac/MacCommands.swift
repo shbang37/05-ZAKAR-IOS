@@ -12,9 +12,9 @@ struct MacCommands: Commands {
         // 편집 메뉴 Undo/Redo — 시스템 기본 항목은 윈도우 UndoManager(=first responder 의존)에
         // 묶여 있어 detail 뷰에서 무반응이다. 앱 소유 UndoManager로 직접 연결한다.
         CommandGroup(replacing: .undoRedo) {
-            Button("실행 취소") { appState.undo.undo() }
+            Button("실행 취소") { appState.performUndo() }
                 .keyboardShortcut("z", modifiers: .command)
-            Button("다시 실행") { appState.undo.redo() }
+            Button("다시 실행") { appState.performRedo() }
                 .keyboardShortcut("z", modifiers: [.command, .shift])
         }
 

@@ -23,7 +23,7 @@ enum MacKey: Equatable {
     case delete            // ⌫ Backspace / ⌦ Forward Delete
     case leftArrow, rightArrow, upArrow, downArrow
     case space, escape, enter
-    case letterF, letterS, letterR, letterZ
+    case letterF, letterS, letterR, letterZ, letterA
     case digit(Int)        // 1~9
 
     init?(keyCode: UInt16) {
@@ -40,6 +40,7 @@ enum MacKey: Equatable {
         case 1:   self = .letterS
         case 15:  self = .letterR
         case 6:   self = .letterZ
+        case 0:   self = .letterA
         case 18: self = .digit(1)
         case 19: self = .digit(2)
         case 20: self = .digit(3)

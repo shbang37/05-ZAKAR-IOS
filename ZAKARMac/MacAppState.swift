@@ -63,8 +63,13 @@ final class MacAppState: ObservableObject {
     }
 
     /// 즐겨찾기 설정·해제. 쓰기가 성공한 뒤에만 상태를 갱신한다.
+    /// ⌘Z로 되돌릴 수 있다 — 되돌리기 안에서 다시 이 함수를 부르므로 다시 실행(⌘⇧Z)도 자동으로 쌓인다.
     func setFavorite(_ id: String, to value: Bool) {
         guard let asset = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject else { return }
+        // 되돌리기 중엔 "되돌림" 안내가 이미 떠 있으므로 덮어쓰지 않는다
+        let quiet = undo.isUndoing || undo.isRedoing
+        undo.registerUndo(withTarget: self) { s in s.setFavorite(id, to: !value) }
+        undo.setActionName(value ? "즐겨찾기" : "즐겨찾기 해제")
         PHPhotoLibrary.shared().performChanges({
             PHAssetChangeRequest(for: asset).isFavorite = value
         }, completionHandler: { success, error in
@@ -76,7 +81,7 @@ final class MacAppState: ObservableObject {
                 }
                 if value { self.favoriteIDs.insert(id) } else { self.favoriteIDs.remove(id) }
                 self.libraryRevision += 1
-                self.showToast(value ? "즐겨찾기에 추가" : "즐겨찾기 해제")
+                if !quiet { self.showToast(value ? "즐겨찾기에 추가" : "즐겨찾기 해제") }
             }
         })
     }
@@ -111,8 +116,30 @@ final class MacAppState: ObservableObject {
 
     private func dispatchKey(_ key: MacKey, _ mods: NSEvent.ModifierFlags) -> Bool {
         guard showNewAlbum == false else { return false }   // 시트가 떠 있으면 시트가 우선
+        // ⌘Z/⌘⇧Z는 어느 화면에서든 여기서 처리 — 메뉴 단축키는 문자 기반이라 한글 입력기에서 흔들린다
+        if key == .letterZ, mods.zakarIsCommandOnly {
+            mods.contains(.shift) ? performRedo() : performUndo()
+            return true
+        }
         guard let destination = selection, let handler = keyHandlers[destination] else { return false }
         return handler(key, mods)
+    }
+
+    // MARK: - 실행 취소 (모든 화면 공용)
+
+    /// 되돌린 내용을 화면에 알린다 — 사진이 다른 화면에서 돌아오면 됐는지 알 수 없으므로.
+    func performUndo() {
+        guard undo.canUndo else { showToast("되돌릴 작업이 없습니다"); return }
+        let name = undo.undoActionName
+        undo.undo()
+        showToast(name.isEmpty ? "실행 취소" : "실행 취소 — \(name)")
+    }
+
+    func performRedo() {
+        guard undo.canRedo else { showToast("다시 실행할 작업이 없습니다"); return }
+        let name = undo.redoActionName
+        undo.redo()
+        showToast(name.isEmpty ? "다시 실행" : "다시 실행 — \(name)")
     }
 
     private var toastToken = 0

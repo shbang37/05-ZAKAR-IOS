@@ -58,15 +58,14 @@ struct SidebarView: View {
                     .dropDestination(for: String.self) { ids, _ in   // 드래그한 사진을 앨범에 추가
                         let assets = fetchAssets(ids)
                         guard !assets.isEmpty else { return false }
-                        photoManager.addAssets(assets, toAlbum: album.collection) { success in
-                            guard success else {
-                                appState.showToast("‘\(album.title)’ 앨범에 넣지 못했습니다")
-                                return
-                            }
-                            appState.showToast("‘\(album.title)’ 앨범에 \(assets.count)장 추가")
+                        photoManager.addToAlbumUndoably(assets, album: album, undo: appState.undo,
+                                                        completion: { success in
+                            appState.showToast(success ? "‘\(album.title)’ 앨범에 \(assets.count)장 추가"
+                                                       : "‘\(album.title)’ 앨범에 넣지 못했습니다")
+                        }, onChange: {
                             photoManager.fetchUserAlbumsForMac()
                             appState.bumpLibrary()
-                        }
+                        })
                         return true
                     }
                 }
@@ -93,10 +92,7 @@ struct SidebarView: View {
                 .dropDestination(for: String.self) { ids, _ in   // 드래그한 사진을 휴지통에 등록
                     let assets = fetchAssets(ids)
                     guard !assets.isEmpty else { return false }
-                    let existing = Set(photoManager.trashAssets.map { $0.localIdentifier })
-                    let toAdd = assets.filter { !existing.contains($0.localIdentifier) }
-                    photoManager.trashAssets.append(contentsOf: toAdd)
-                    photoManager.saveTrash()
+                    photoManager.addToTrashUndoably(assets, undo: appState.undo)
                     return true
                 }
             }
