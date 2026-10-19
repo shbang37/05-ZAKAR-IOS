@@ -3,7 +3,7 @@ import Photos
 
 // ============================================================
 // SidebarView — NavigationSplitView 사이드바
-// 섹션: 라이브러리(모든 사진[리뷰 포함]/유사 그룹) · 모음(즐겨찾기/앨범 ⌘1~9) · 휴지통(골드 배지)
+// 섹션: 라이브러리(모든 사진[리뷰 포함]/유사 그룹) · 모음(즐겨찾기/앨범 ⌘1~9 — 접기·펼치기) · 휴지통(골드 배지)
 // 하단: 유사 분석 진행 표시. 사이드바 vibrancy는 .listStyle(.sidebar) 기본 제공.
 // ============================================================
 
@@ -13,6 +13,8 @@ struct SidebarView: View {
     @EnvironmentObject var flyController: FlyToTrashController
     @Binding var selection: MacDestination?
     @State private var favoriteCount = 0
+    /// 앨범 목록 펼침 상태 — 다음에 켜도 그대로 (기본은 접힘)
+    @AppStorage("sidebarAlbumsExpanded") private var albumsExpanded = false
 
     var body: some View {
         List(selection: $selection) {
@@ -39,42 +41,59 @@ struct SidebarView: View {
                 }
                 .tag(MacDestination.favorites)
 
-                ForEach(Array(photoManager.albums.enumerated()), id: \.element.id) { index, album in
-                    HStack {
-                        Label(album.title, systemImage: "folder")
-                        Spacer()
-                        Text("\(album.assetCount)")
-                            .font(.caption)
-                            .foregroundStyle(AppTheme.subText.opacity(0.8))
-                        if index < 9 {
-                            Text("⌘\(index + 1)")
+                // 앨범은 접어 두고 필요할 때 펼친다 (펼치기/접기 — 디스클로저).
+                // 접혀 있어도 ⌘1~9는 그대로 동작하고, 앨범 화면으로 가면 자동으로 펼친다.
+                DisclosureGroup(isExpanded: $albumsExpanded) {
+                    ForEach(Array(photoManager.albums.enumerated()), id: \.element.id) { index, album in
+                        HStack {
+                            Label(album.title, systemImage: "folder")
+                            Spacer()
+                            Text("\(album.assetCount)")
                                 .font(.caption)
-                                .foregroundStyle(AppTheme.subText)
+                                .foregroundStyle(AppTheme.subText.opacity(0.8))
+                            if index < 9 {
+                                Text("⌘\(index + 1)")
+                                    .font(.caption)
+                                    .foregroundStyle(AppTheme.subText)
+                            }
+                        }
+                        .tag(MacDestination.album(id: album.id))
+                        .dropDestination(for: String.self) { ids, _ in   // 드래그한 사진을 앨범에 추가
+                            let assets = fetchAssets(ids)
+                            guard !assets.isEmpty else { return false }
+                            photoManager.addToAlbumUndoably(assets, album: album, undo: appState.undo,
+                                                            completion: { success in
+                                appState.showToast(success ? "‘\(album.title)’ 앨범에 \(assets.count)장 추가"
+                                                           : "‘\(album.title)’ 앨범에 넣지 못했습니다")
+                            }, onChange: {
+                                photoManager.fetchUserAlbumsForMac()
+                                appState.bumpLibrary()
+                            })
+                            return true
                         }
                     }
-                    .tag(MacDestination.album(id: album.id))
-                    .dropDestination(for: String.self) { ids, _ in   // 드래그한 사진을 앨범에 추가
-                        let assets = fetchAssets(ids)
-                        guard !assets.isEmpty else { return false }
-                        photoManager.addToAlbumUndoably(assets, album: album, undo: appState.undo,
-                                                        completion: { success in
-                            appState.showToast(success ? "‘\(album.title)’ 앨범에 \(assets.count)장 추가"
-                                                       : "‘\(album.title)’ 앨범에 넣지 못했습니다")
-                        }, onChange: {
-                            photoManager.fetchUserAlbumsForMac()
-                            appState.bumpLibrary()
-                        })
-                        return true
-                    }
-                }
 
-                Button {
-                    appState.showNewAlbum = true
+                    Button {
+                        appState.showNewAlbum = true
+                    } label: {
+                        Label("새 앨범…", systemImage: "plus")
+                            .foregroundStyle(AppTheme.subText)
+                    }
+                    .buttonStyle(.plain)
                 } label: {
-                    Label("새 앨범…", systemImage: "plus")
-                        .foregroundStyle(AppTheme.subText)
+                    HStack {
+                        Label("앨범", systemImage: "rectangle.stack")
+                        Spacer()
+                        Text("\(photoManager.albums.count)")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.subText.opacity(0.8))
+                    }
+                    .contentShape(Rectangle())
+                    // 화살표뿐 아니라 "앨범" 글자를 눌러도 열리고 닫히게
+                    .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { albumsExpanded.toggle() } }
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityHint(albumsExpanded ? "앨범 목록 접기" : "앨범 목록 펼치기")
                 }
-                .buttonStyle(.plain)
             }
 
             Section {
@@ -97,6 +116,14 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
+        // ⌘1~9 등으로 앨범 화면에 가면 어느 앨범인지 보이도록 펼친다
+        .onChange(of: selection) { _, newValue in
+            if case .album = newValue { albumsExpanded = true }
+        }
+        // 새 앨범을 만들면 바로 보이도록 펼친다 (처음 불러올 때 0→N은 제외)
+        .onChange(of: photoManager.albums.count) { old, new in
+            if old > 0, new > old { albumsExpanded = true }
+        }
         .task(id: appState.libraryRevision) {       // F로 즐겨찾기가 바뀌면 숫자도 따라 바뀐다
             let options = PHFetchOptions()
             options.predicate = NSPredicate(format: "favorite == YES")
