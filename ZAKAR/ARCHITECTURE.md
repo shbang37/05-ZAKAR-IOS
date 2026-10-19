@@ -1,81 +1,131 @@
-// ZAKAR Architecture
+# ZAKAR Architecture
 
 본 문서는 ZAKAR iOS 앱의 아키텍처와 주요 모듈 간 책임/흐름을 설명합니다.
 
 ## 개요
-- 패턴: SwiftUI + ObservableObject(ViewModel) + Photos 프레임워크
-- 데이터: PHAsset(시스템 사진 라이브러리) + LocalDB(Application Support에 JSON 저장)
-- 네비게이션: NavigationStack(홈), NavigationView 일부 화면(설정 등)
+- 패턴: SwiftUI + ObservableObject + Photos 프레임워크
+- 인증: Firebase Auth + Firestore (승인 기반 폐쇄형)
+- 데이터: PHAsset + LocalDB(JSON) + Firebase Cloud Storage(예정) + Synology NAS(예정)
+- 네비게이션: NavigationStack(홈 기준) — ContentView는 자체 NavigationView 없음
+
+## 백엔드 구성
+
+### 인증/사용자 관리 (Firebase)
+- Firebase Auth: 이메일/비밀번호
+- Firestore `users/{uid}`: `status = pending | approved | rejected`
+- 회원가입 → pending → Admin 승인 → approved → 앱 사용 가능
+- 실시간 리스닝: `addSnapshotListener`로 승인 즉시 화면 전환
+- ZAKARAdmin(macOS): Firebase REST API (Identity Toolkit + Firestore REST)
+- **설치 필요**: `firebase-ios-sdk` 패키지 (FirebaseAuth + FirebaseFirestore)
+
+### 파일 저장소
+| 유형 | 저장소 | 상태 |
+|---|---|---|
+| 문서·사진 | Firebase Cloud Storage | 예정 |
+| 영상(대용량) | Synology NAS (WebDAV) | Mock 구현됨, WebDAV 교체 대기 |
+| 개인 백업 | Google Drive | 구현 완료 |
+| 로컬 임시 | LocalDB (JSON) | 구현 완료 |
+
+파일 저장소는 `ZKDriveSyncing` 프로토콜로 추상화되어 교체 가능.
 
 ## 주요 모듈
 
 ### 1) PhotoManager (ObservableObject)
-- 책임
-  - 사진 로드(fetchPhotos)
-  - 유사 사진 분석(analyzeSimilaritiesIfNeeded → analyzeGroups)
-  - 임시 앨범/앨범 추가/삭제 등 Photos 조작
+- 책임: 사진 로드, 유사 분석, 삭제, 휴지통 공유 상태
 - 핵심 상태
-  - `allPhotos: [PHAsset]` 로드된 사진 목록
-  - `groupedPhotos: [[PHAsset]]` 유사 그룹 목록
-  - `isLoadingList`, `isAnalyzing`: UI 상태 표시
-  - `didAnalyzeForCurrentList`: 현재 목록에 대해 분석 중복 방지
-  - `shouldAnalyzeAfterLoad`: 사진 로드 완료 후 분석 예약(지연 분석 큐)
-- 흐름
-  1. fetchPhotos → 권한 확인 → loadAssets(백그라운드) → 메인 스레드 반영
-  2. analyzeSimilaritiesIfNeeded → allPhotos 비었으면 예약 → 로드 완료 시 자동 분석
-  3. analyzeGroups → 시간 인접 그룹화 → pHash 유사도 필터링
+  - `allPhotos: [PHAsset]`, `groupedPhotos: [[PHAsset]]`, `trashAssets: [PHAsset]`
+  - `isLoadingList`, `isAnalyzing`, `didAnalyzeForCurrentList`, `shouldAnalyzeAfterLoad`
+- fetchPhotos 규칙
+  - `force: Bool = false` 파라미터 — 삭제/외부 변경 후엔 반드시 `force: true`
+  - 동일 필터 + 사진 있음 + 로딩 중 아님 → 스킵 (force=true면 우회)
+- pHash 분석 파이프라인 (전체 async)
+  ```
+  analyzeSimilaritiesIfNeeded()
+    └─ Task { await analyzeGroupsProgressive(assets) }
+         └─ 7초 시간 그룹 → await flushTimeGroupIfReady(&group)
+              └─ await filterByVisualSimilarity(group)
+                   └─ withTaskGroup (병렬 해시)
+                        └─ await getOrGenerateHash(asset)
+                             └─ withCheckedContinuation {
+                                  PHImageManager.requestImage(32×32, fastFormat)
+                                  콜백 → cont.resume(hash)
+                                }
+  ```
+  - `isSynchronous=true` 사용 금지 (cooperative thread pool 교착 위험)
+  - hash=0(로드 실패)은 캐시 저장 안 함
+  - `hashCacheLock: NSLock`으로 캐시 보호
+  - Hamming distance ≤ 18 → 유사 (balanced 기준)
 
-### 2) ContentView
-- 역할
-  - 상단 세그먼트(모든 사진/유사 사진) 전환
-  - 유사 사진 탭 진입 시 분석 트리거/프로그레스 표시
-  - CleanUpView/TrashView 시트 전환 및 임시보관함 연동
-- 안정화 포인트
-  - `initialTabParam` 저장 후 `onAppear`에서 `selectedTab` 재설정
-  - 유사 탭(0)일 때 `photoManager.analyzeSimilaritiesIfNeeded()` 보장
-  - 튜토리얼 1회 표시(UserDefaults)
-  - 임시보관함 식별자 영속화(LocalDB)
+### 2) AuthService (ObservableObject)
+- Firebase Auth + Firestore 기반 인증/승인
+- `AuthState`: `loading / unauthenticated / pendingApproval / rejected / approved`
+- `#if canImport(FirebaseAuth)` 가드로 패키지 미추가 시에도 빌드 가능
+- `listenForApprovalChangeFirebase`: Firestore snapshot으로 실시간 승인 감지
 
-### 3) HomeView
-- 역할
-  - 홈 요약 카드 + 주요 네비게이션(모든 사진/유사 사진)
-  - NavigationStack 사용
-  - 유사 사진 링크는 `.id(UUID())`로 항상 새 ContentView 생성
-  - 카드 전체를 탭 가능하도록 `.contentShape(Rectangle())`
+### 3) ContentView
+- 상단 세그먼트(모든 사진/유사 사진) 전환
+- 자체 NavigationView 없음 — 부모 NavigationStack 사용
+- `initialTabParam` → `onAppear`에서 `selectedTab` 재설정
+- TrashView `onDeleteSuccess` → `fetchPhotos(force: true)` 필수
 
-### 4) LocalDB
-- 책임
-  - 메타데이터(AppMetadata): 온보딩 완료, 최근 정리, 절감(추정), 아카이브 설정
-  - 임시보관함(trash.json): PHAsset.localIdentifier 배열 저장/복원
-- 저장 위치
-  - Application Support/ZAKAR/*.json
+### 4) HomeView
+- NavigationStack 최상위
+- `.onAppear`은 NavigationStack **내부** ZStack에 배치 (navigate-back 시 재실행 보장)
+- NavigationLink 목적지에 `.id(UUID())` 사용 금지
 
-### 5) CleanUpView
-- 역할
-  - 제스처 기반 빠른 선별(위=삭제 후보, 아래=즐겨찾기, 좌/우=이동)
-  - 휴지통 버튼 → ContentView에 Notification으로 열기 신호
-  - 앨범 추가/공유 프리셋 기반 파일명 규칙
+### 5) LocalDB
+- `trash.json`: PHAsset.localIdentifier 배열 (앱 재시작 후 복원)
+- `metadata.json`: 온보딩, 최근 정리, 절감 추정
+- 저장 위치: Application Support/ZAKAR/
 
-### 6) GoogleDriveService (베타)
-- 책임
-  - OAuth(PKCE) 인증 플로우
-  - 폴더 생성/경로 보장, 업로드(멀티파트)
-- 주의
-  - clientID/redirectScheme를 실 값으로 교체 필요
-  - iOS 26의 윈도우 생성 API 변경 대응
+### 6) Components
+- `AssetThumbnail`: `requestID: PHImageRequestID` 저장 → `.onDisappear`에서 `cancelImageRequest`
+- `TrashView`: `selectedIDs: Set<String>` (localIdentifier 기반), 버튼 액션 내부에서 targets 재계산
+- PHAsset 비교는 항상 `asset.localIdentifier` 문자열로
+
+### 7) CleanUpView
+- DragIntent enum: 30pt 데드존 후 방향 확정
+- 휴지통: `trashProgress(0→1)` 기반 2차 베지어 포물선
+- `exportCurrentPhotoForSharing`: withCheckedContinuation으로 URL 반환 후 MainActor에서 @State 업데이트
+
+### 8) GoogleDriveService
+- OAuth2 PKCE + ASWebAuthenticationSession
+- 멀티파트 업로드, 키체인 토큰 저장
+- clientID/redirectScheme 실값 교체 필요
 
 ## 데이터 흐름
-1. 앱 시작(ZAKARApp) → PhotoManager 주입 → fetchPhotos → analyzeSimilaritiesIfNeeded(지연 예약 포함)
-2. 홈(HomeView) → 유사 사진 링크 → ContentView(initialTab: 0)
-3. ContentView onAppear → selectedTab 재설정 + 분석 보장 → SimilarityGroupRow 렌더링
-4. CleanUpView → 휴지통/앨범/공유 → TrashView → LocalDB에 trash.json 반영
 
-## 오류/경고 대응(요약)
-- `ASWebAuthenticationSession` 콜백 weak self 제거, 종료 시 nil 설정
-- iOS 26 UIWindow 생성: 가능하면 `UIWindow(windowScene:)` 사용
+```
+앱 시작(ZAKARApp)
+  → AuthService.checkCurrentSession()
+      → approved: PhotoManager 주입 → fetchPhotos → 분석 예약
+      → pendingApproval: 승인 대기 화면 + 실시간 리스닝
+      → unauthenticated: 로그인 화면
+
+홈(HomeView)
+  → NavigationLink → ContentView(initialTab)
+      → 유사탭: analyzeSimilaritiesIfNeeded()
+      → 모든사진탭: photoGrid
+
+CleanUpView
+  → 제스처 → 휴지통/즐겨찾기/이동
+  → NotificationCenter("OpenTrash") → TrashView sheet
+
+TrashView
+  → deleteAssets → fetchPhotos(force: true) + loadTrash()
+```
+
+## 안전 규칙 요약
+- PHAsset 비교: `localIdentifier` 문자열 (포인터 동일성 금지)
+- TrashView 콜백: `onDeleteSuccess` → `fetchPhotos(force: true)`
+- PHImageManager + Swift concurrency: `withCheckedContinuation` (isSynchronous=true 금지)
+- ForEach 배열: `let snapshot = array; ForEach(Array(snapshot.enumerated()), id: \.offset)`
+- @Published 쓰기: 반드시 MainActor 컨텍스트
 
 ## 확장 포인트
-- 유사도 엄격도 UI 제공(SimilarityPreset)
+- Firebase Cloud Storage 연동 (문서·사진 공유 아카이브)
+- Synology NAS WebDAV 실구현 (NASMockService → 실서비스 교체)
+- 유사도 엄격도 UI (SimilarityPreset: light/balanced/strict)
 - 멀티 선택/배치 작업 UX
 - 임시보관함 자동 비우기 정책
-- 드라이브 정책/계정 가시화 및 iCloud 옵션
+

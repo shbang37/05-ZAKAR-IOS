@@ -991,19 +991,102 @@ private var currentFilterMonth: Int? = nil
 
 ---
 
-**최종 업데이트**: 2026년 4월 16일 수요일 22:10
+**최종 업데이트**: 2026년 5월 16일 금요일
 **프로젝트 상태**: 
 - App Store 배포 준비 완료 (검증 대기 중)
 - 은혜의교회 300명 목표 설정 완료
-- UX 개선 및 버그 수정 완료 (4월 16일)
+- **Phase 1 AWS 인프라 구축 완료** ✅ (2026-05-16)
 
 **플랫폼**: iOS 17+ (SwiftUI, NavigationStack 사용)
 **타겟 디바이스**: iPhone, iPad
 **개발 환경**: Xcode 15+, Swift 5.9+
-**배포 버전**: 1.8 (빌드 9)
-**금일 수정된 주요 파일** (2026년 4월 16일):
-- `PhotoManager.swift` - 사진 정렬, 필터 추적 시스템
-- `CleanUpView.swift` - 대각선 스와이프 제스처
-- `HomeView.swift` - 월별 블록 색상, 필터 초기화
-- `ZAKARApp.swift` - SwiftUI body print 문 수정
+**배포 버전**: 1.8 (빌드 9) → v2.0 개발 중
+
+---
+
+## ☁️ AWS 인프라 현황 (Phase 1 완료 - 2026-05-16)
+
+### AWS 계정
+- **Account ID**: 314076239356
+- **Region**: ap-northeast-2 (서울)
+- **AWS CLI**: ~/bin/aws (v2.34.48)
+
+### S3
+| 버킷 | 용도 |
+|------|------|
+| `zakar-church-archive` | 사진 아카이브 저장소 |
+| `zakar-access-logs` | 액세스 로그 저장소 |
+
+**폴더 구조** (`zakar-church-archive/zakar/`):
+- `songdo/` - 송도청
+- `middle/` - 미들청
+- `eum/` - 이음청
+- `ddrae/` - 또래청
+- `shared/` - 공용
+
+### IAM Roles
+| 역할명 | 용도 |
+|--------|------|
+| `zakar-role-songdo` | 송도청 S3 접근 |
+| `zakar-role-middle` | 미들청 S3 접근 |
+| `zakar-role-eum` | 이음청 S3 접근 |
+| `zakar-role-ddrae` | 또래청 S3 접근 |
+| `zakar-role-admin` | 전체 S3+DynamoDB 접근 |
+| `zakar-lambda-execution-role` | Lambda 실행 역할 (STS AssumeRole 포함) |
+
+### DynamoDB Tables
+- `ZakarArchiveMetadata` - 파일 메타데이터 (GSI: department-uploadedAt-index)
+- `ZakarAccessLog` - 접근 이력 (GSI: userId-accessedAt-index)
+
+### Lambda Functions
+| 함수명 | 역할 |
+|--------|------|
+| `zakar-token-exchange` | Firebase JWT → STS 임시 자격증명 |
+| `zakar-presigned-url` | S3 Presigned URL 생성 (upload/view/download) |
+| `zakar-list-files` | DynamoDB GSI로 파일 목록 조회 |
+| `zakar-access-log` | 접근 이력 조회 |
+
+### API Gateway
+- **API ID**: `1kb1ritkqb`
+- **Base URL**: `https://1kb1ritkqb.execute-api.ap-northeast-2.amazonaws.com/prod`
+- **Endpoints**:
+  - `POST /auth` → token-exchange
+  - `GET /files` → list-files
+  - `POST /files/upload-url` → presigned-url
+  - `GET /files/view-url` → presigned-url
+  - `GET /files/download-url` → presigned-url
+  - `GET /logs` → access-log
+
+### Cognito Identity Pool
+- **Pool ID**: `ap-northeast-2:1228d3b4-de61-4cd8-b8dd-4316c11cfda3`
+- **Pool Name**: zakar-identity-pool
+- **Developer Provider**: zakar.firebase
+
+### Firebase 연동 정보
+- **Project ID**: zakar-c99ab
+- **Bundle ID**: com.zakar.app
+
+---
+
+## 📋 다음 단계 (Phase 2 - iOS v2.0)
+1. `AWSService.swift` 작성 (ZKDriveSyncing 프로토콜 구현)
+2. `ArchiveView.swift` 수정 (NAS 패널 → AWS 패널, 부서 선택 UI)
+3. Firebase JWT → API Gateway `/auth` 호출 연동
+4. 부서별 S3 접근 테스트
+5. Presigned URL 뷰어/다운로드 구현
+
+---
+
+## 🤖 Android (Flutter) 포팅 — Phase 0~7 완료
+
+iOS ZAKAR를 Android로 1:1 정밀 포팅. UI/UX 일치도 ≥98% 목표.
+
+- **프로젝트**: `02. 프로그램 개발/02. ZAKAR Android/zakar_flutter/`
+- **상세 메모리/디버깅 주의사항**: 위 프로젝트의 `CLAUDE.md` (신규 세션 자동 로드)
+- **상태**: Phase 0~7 전부 완료. 자체 유사도 — 홈98/앨범99/아카이브98/프로필98/ContentView96/CleanUpView97/온보딩98.
+- **핵심 결정**: pHash는 `compute()` isolate(ANR 방지) / GlassCard는 `BackdropFilter` 금지·불투명 그라데이션 / 디버그 스크린샷은 `/data/local/tmp/`(`/sdcard` 금지 — MediaStore 오염).
+- **미완 설정**: GCP Console에서 Android OAuth Client ID 발급 → `google_drive_service.dart`의 `_clientId` 교체 (iOS도 동일 제약).
+
+### 일치도 검증 스킬 — `ios-parity-check`
+`~/.claude/skills/ios-parity-check/`. iOS↔Android 일치도를 6카테고리 100점으로 엄격·객관 채점하고 화면별 점수+근거 리포트 산출. "통일성/일치도/유사도/parity" 또는 UI 변경 후 ≥98% 확인 시 트리거.
 
