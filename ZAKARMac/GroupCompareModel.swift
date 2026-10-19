@@ -4,7 +4,8 @@ import Combine
 
 // ============================================================
 // 그룹 비교 모드 상태 모델
-// 핵심 결정: 비대표 사진의 기본 상태 = "삭제" (keepSet 초기값 = {대표})
+// 핵심 결정: 비대표 사진의 기본 상태 = "삭제" (keepSet 초기값 = {대표} ∪ 즐겨찾기)
+// ⏎는 화면에 보이는 선택 그대로 정리한다 — 손대지 않았으면 "대표만 남기기"와 같다.
 // 정리 파이프라인: 휴지통 등록(LocalDB)만, PHAsset 실삭제는 휴지통 비우기(Phase 7)에서.
 // ============================================================
 
@@ -17,6 +18,11 @@ struct GroupDecision {
     /// "이번엔 남기기로 한 사진"을 휴지통에서 빼내기 위해 기억한다.
     var trashedIDs: Set<String> = []
     var cleaned: Bool = false
+    /// 사용자가 ⌫·↑·↓·R·클릭으로 바꾼 적이 있는지 — 있으면 엔진이 대표를 다시 고르지 않는다
+    var userEdited: Bool = false
+    /// 사용자가 직접 "유지"로 정한 사진. 다른 화면에서 이미 휴지통에 넣었더라도
+    /// 여기서 유지로 정하고 정리하면 휴지통에서 꺼낸다 (화면의 "유지"를 믿고 비우는 일이 없도록).
+    var explicitKeep: Set<String> = []
 
     /// 삭제 예정 장수 (현재 선택 기준)
     var deleteCount: Int { assets.count - keepSet.count }
@@ -38,6 +44,8 @@ final class GroupCompareSession: ObservableObject {
 
     private weak var photoManager: PhotoManager?
     private(set) var started = false
+    /// 즐겨찾기 여부 (MacAppState.favoriteIDs) — 즐겨찾기한 사진은 기본값을 "유지"로 시작한다
+    var isFavorite: ((String) -> Bool)?
 
     /// 발견된 모든 그룹을 처리했는지 (progressive: 분석이 더 찾을 수 있으므로 뷰에서 isAnalyzing과 함께 판단)
     var reachedEnd: Bool { started && currentIndex >= decisions.count }
@@ -47,13 +55,21 @@ final class GroupCompareSession: ObservableObject {
 
     /// groupedPhotos는 순수 append로 성장(재정렬 없음)하므로, 새로 발견된 그룹만
     /// decisions에 이어붙인다 — 진행 인덱스·사용자 편집을 보존하는 progressive 구성.
+    ///
+    /// 단, 휴지통 비우기 등으로 사진 목록을 다시 읽으면 분석이 처음부터 다시 돌아 그룹 목록이 바뀐다.
+    /// 그때 옛 그룹(지워진 사진 포함)을 붙들고 있으면 안 되므로 겹치는 그룹이 하나라도 다르면 처음부터 다시 맞춘다.
     func syncGroups(_ groups: [[PHAsset]], photoManager: PhotoManager) {
         self.photoManager = photoManager
+        if needsReset(for: groups) {
+            decisions = []
+            currentIndex = 0
+            print("ZAKAR Log: [Mac] 유사 그룹이 다시 분석되어 세션을 새로 맞춤")
+        }
         guard groups.count > decisions.count else { return }
         let newSlice = groups[decisions.count..<groups.count]
         let newDecisions = newSlice.compactMap { g -> GroupDecision? in
             guard let rep = g.first else { return nil }
-            return GroupDecision(assets: g, representative: rep, keepSet: [rep.localIdentifier])
+            return GroupDecision(assets: g, representative: rep, keepSet: defaultKeep(g, rep: rep))
         }
         decisions.append(contentsOf: newDecisions)
         started = true
@@ -64,20 +80,43 @@ final class GroupCompareSession: ObservableObject {
         }
     }
 
-    /// 엔진 품질 점수로 대표를 정교화 (사용자가 아직 대표를 안 바꿨을 때만 반영)
-    func refineRepresentative(at index: Int) async {
-        guard let pm = photoManager, decisions.indices.contains(index),
-              !decisions[index].cleaned else { return }   // 정리한 그룹은 대표를 바꾸지 않는다
-        let group = decisions[index].assets
-        guard let best = await pm.selectBestPhoto(from: group) else { return }
-        guard decisions.indices.contains(index) else { return }
-        var d = decisions[index]
-        // 초기 기본 상태(대표만 유지)일 때만 대표·keepSet 갱신 — 사용자 편집 보존
-        if d.keepSet == [d.representative.localIdentifier] {
-            d.representative = best
-            d.keepSet = [best.localIdentifier]
-            decisions[index] = d
+    private func needsReset(for groups: [[PHAsset]]) -> Bool {
+        if groups.count < decisions.count { return true }
+        for i in 0..<min(groups.count, decisions.count)
+        where groups[i].map(\.localIdentifier) != decisions[i].assets.map(\.localIdentifier) {
+            return true
         }
+        return false
+    }
+
+    /// 기본 유지 집합 = 대표 + 즐겨찾기 (즐겨찾기한 사진이 ⏎ 한 번에 휴지통으로 가지 않게)
+    private func defaultKeep(_ assets: [PHAsset], rep: PHAsset) -> Set<String> {
+        var keep: Set<String> = [rep.localIdentifier]
+        if let isFavorite {
+            keep.formUnion(assets.map(\.localIdentifier).filter(isFavorite))
+        }
+        return keep
+    }
+
+    private func isUntouched(_ index: Int) -> Bool {
+        decisions.indices.contains(index) && !decisions[index].cleaned && !decisions[index].userEdited
+    }
+
+    /// 엔진 품질 점수로 대표를 정교화 (손대지 않은 그룹만)
+    func refineRepresentative(at index: Int) async {
+        guard let pm = photoManager, isUntouched(index) else { return }
+        // 그사이 즐겨찾기한 사진도 기본 유지에 반영 (그룹이 화면에 올 때마다)
+        let current = decisions[index]
+        decisions[index].keepSet = defaultKeep(current.assets, rep: current.representative)
+        let group = current.assets
+        guard let best = await pm.selectBestPhoto(from: group) else { return }
+        // 계산하는 동안 사용자가 ⏎로 정리했거나 손댔을 수 있다 — 기다린 뒤 다시 확인해야
+        // 이미 휴지통에 들어간 사진이 '대표(유지)'로 바뀌어 보이는 일이 없다.
+        guard isUntouched(index), decisions[index].assets.map(\.localIdentifier) == group.map(\.localIdentifier) else { return }
+        var d = decisions[index]
+        d.representative = best
+        d.keepSet = defaultKeep(d.assets, rep: best)
+        decisions[index] = d
     }
 
     // MARK: - 사용자 조작 (모두 ⌘Z로 되돌릴 수 있다)
@@ -87,7 +126,12 @@ final class GroupCompareSession: ObservableObject {
         guard var d = current else { return }
         let id = asset.localIdentifier
         guard id != d.representative.localIdentifier else { return }   // 대표는 토글 불가
-        if d.keepSet.contains(id) { d.keepSet.remove(id) } else { d.keepSet.insert(id) }
+        if d.keepSet.contains(id) {
+            d.keepSet.remove(id); d.explicitKeep.remove(id)
+        } else {
+            d.keepSet.insert(id); d.explicitKeep.insert(id)
+        }
+        d.userEdited = true
         replaceDecision(at: currentIndex, with: d, actionName: "유지·삭제 전환", undoManager: undoManager)
     }
 
@@ -99,7 +143,12 @@ final class GroupCompareSession: ObservableObject {
         let id = asset.localIdentifier
         if id == d.representative.localIdentifier { return keep }   // 대표는 언제나 유지
         guard d.keepSet.contains(id) != keep else { return true }
-        if keep { d.keepSet.insert(id) } else { d.keepSet.remove(id) }
+        if keep {
+            d.keepSet.insert(id); d.explicitKeep.insert(id)
+        } else {
+            d.keepSet.remove(id); d.explicitKeep.remove(id)
+        }
+        d.userEdited = true
         replaceDecision(at: currentIndex, with: d, actionName: keep ? "유지 표시" : "삭제 예정 표시",
                         undoManager: undoManager)
         return true
@@ -110,6 +159,8 @@ final class GroupCompareSession: ObservableObject {
         guard var d = current else { return }
         d.representative = asset
         d.keepSet.insert(asset.localIdentifier)
+        d.explicitKeep.insert(asset.localIdentifier)
+        d.userEdited = true
         replaceDecision(at: currentIndex, with: d, actionName: "대표 지정", undoManager: undoManager)
     }
 
@@ -140,7 +191,7 @@ final class GroupCompareSession: ObservableObject {
     // MARK: - 정리 실행
 
     /// 현재 그룹 정리 → 휴지통 등록(LocalDB) + 취향 신호 + 통계, 다음 그룹으로.
-    /// keepOnlyRepresentative=true 면 현재 선택 무시하고 대표만 남긴다(Primary ⏎).
+    /// keepOnlyRepresentative=false(⏎·기본)면 화면에 보이는 선택대로, true면 선택을 무시하고 대표만 남긴다.
     ///
     /// 이미 정리한 그룹을 다시 반영하면 **차이만** 적용한다:
     /// 새로 삭제로 바뀐 사진은 휴지통에 넣고, 이번엔 남기기로 한 사진은 휴지통에서 뺀다.
@@ -152,9 +203,12 @@ final class GroupCompareSession: ObservableObject {
         let inTrash = Set(pm.trashAssets.map(\.localIdentifier))
 
         let toAdd = before.assets.filter { deleteIDs.contains($0.localIdentifier) && !inTrash.contains($0.localIdentifier) }
+        // 휴지통에서 꺼낼 사진: 이 그룹이 전에 넣었는데 이번엔 남기는 사진 +
+        // 다른 화면에서 휴지통에 넣었지만 여기서 사용자가 직접 "유지"로 정한 사진
         let toRestore = before.assets.filter {
-            before.trashedIDs.contains($0.localIdentifier) && !deleteIDs.contains($0.localIdentifier)
-                && inTrash.contains($0.localIdentifier)
+            let id = $0.localIdentifier
+            return inTrash.contains(id) && !deleteIDs.contains(id)
+                && (before.trashedIDs.contains(id) || before.explicitKeep.contains(id))
         }
 
         if !toAdd.isEmpty {

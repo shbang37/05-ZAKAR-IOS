@@ -14,6 +14,7 @@ struct ComparableThumbnail: View {
     let isRepresentative: Bool
     let isKept: Bool
     let isFavorite: Bool
+    var isInTrash: Bool = false
     let onToggle: () -> Void
     let onMakeRepresentative: () -> Void
 
@@ -24,7 +25,10 @@ struct ComparableThumbnail: View {
 
     private var a11yLabel: String {
         let state = isRepresentative ? "대표" : (isDelete ? "삭제 예정" : "유지")
-        return isFavorite ? "사진, \(state), 즐겨찾기" : "사진, \(state)"
+        var parts = ["사진", state]
+        if isFavorite { parts.append("즐겨찾기") }
+        if isInTrash { parts.append("이미 휴지통에 있음") }
+        return parts.joined(separator: ", ")
     }
 
     var body: some View {
@@ -84,6 +88,22 @@ struct ComparableThumbnail: View {
                     }
                 }
                 .padding(8)
+            }
+
+            // 다른 화면에서 이미 휴지통에 넣은 사진 — 유지로 두고 정리하면 휴지통에서 꺼낸다
+            if isInTrash {
+                VStack {
+                    HStack {
+                        Spacer()
+                        Label("휴지통에 있음", systemImage: "trash.fill")
+                            .font(.caption2.weight(.bold))
+                            .padding(.horizontal, 7).padding(.vertical, 3)
+                            .background(Capsule().fill(Color.red.opacity(0.85)))
+                            .foregroundStyle(.white)
+                    }
+                    Spacer()
+                }
+                .padding(.top, isDelete ? 40 : 8).padding(.trailing, 8)
             }
 
             // hover 시 대표 지정 버튼 (비대표 카드만)

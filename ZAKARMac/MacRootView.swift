@@ -1,5 +1,6 @@
 import SwiftUI
 import Photos
+import AppKit
 
 // ============================================================
 // MacRootView — 앱 셸 (NavigationSplitView)
@@ -45,6 +46,10 @@ struct MacRootView: View {
         .coordinateSpace(name: "root")
         .environmentObject(flyController)
         .task { await ensureAccessAndLoad() }
+        // 사진 앱 등에서 사진을 추가·삭제하고 돌아오면 반영 (전체 장수가 달라졌을 때만 다시 읽음)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            photoManager.refreshIfLibraryChanged()
+        }
         .sheet(isPresented: $appState.showNewAlbum) {
             NewAlbumSheet().environmentObject(photoManager)
         }

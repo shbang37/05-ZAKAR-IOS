@@ -17,7 +17,10 @@ struct QuickLookRequest {
 @MainActor
 final class MacAppState: ObservableObject {
     @Published var selection: MacDestination? = .allPhotos {
-        didSet { if selection != .allPhotos { isReviewing = false } }   // 다른 화면에 갔다 오면 격자부터
+        didSet {
+            if selection != .allPhotos { isReviewing = false }   // 다른 화면에 갔다 오면 격자부터
+            if selection != oldValue { quickLook = nil }          // 확대 보기가 새 화면 위에 남지 않게
+        }
     }
 
     // MARK: - 리뷰 (모든 사진 안의 한 장씩 보기)
@@ -35,6 +38,11 @@ final class MacAppState: ObservableObject {
     /// 화면을 떠난 뒤에도 ⌘Z가 대상(세션)을 잃지 않는다.
     let reviewSession = ReviewSession()
     let groupSession = GroupCompareSession()
+
+    init() {
+        // 그룹 비교가 즐겨찾기한 사진을 기본 "유지"로 시작하도록 (앱 전체가 보는 즐겨찾기 집합 하나를 공유)
+        groupSession.isFavorite = { [weak self] id in self?.favoriteIDs.contains(id) ?? false }
+    }
 
     func startReview(at index: Int) {
         reviewIndex = max(0, index)

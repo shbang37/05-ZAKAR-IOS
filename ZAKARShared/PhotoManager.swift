@@ -135,6 +135,18 @@ class PhotoManager: ObservableObject {
     
     // 동시 fetch 방지 플래그
     private var isFetching = false
+
+    /// 분석 회차 — 사진을 다시 읽거나 필터를 바꾸면 올라간다. 이전 회차 분석은 결과를 붙이지 않고 멈춘다
+    /// (멈추지 않으면 새 결과에 옛 그룹이 섞여 같은 그룹이 두 번 보인다)
+    private var analysisGeneration = 0
+    private var analysisTask: Task<Void, Never>?
+
+    /// 마지막으로 읽은 라이브러리 전체 사진 수 — 앱에 돌아왔을 때 바뀌었는지 판단용
+    private var loadedLibraryCount = 0
+
+    /// 휴지통 파일에 있지만 지금 읽을 수 없는 사진 id ('선택한 사진만 허용' 등).
+    /// 저장할 때 같이 남겨 둬야 권한이 바뀌었을 때 휴지통 목록이 사라지지 않는다.
+    private var unresolvedTrashIDs: [String] = []
     
     // 현재 적용된 필터 추적
     private var currentFilterYear: Int? = nil
@@ -144,6 +156,7 @@ class PhotoManager: ObservableObject {
     /// 필터 변경 시 분석 상태 및 캐시 초기화
     func resetAnalysisState() {
         print("ZAKAR Log: PhotoManager - resetAnalysisState called")
+        cancelAnalysis()
         hashCacheLock.withLock { hashCache.removeAll() }
         featurePrintCacheLock.withLock { featurePrintCache.removeAll() }
         Task { @MainActor in
@@ -183,6 +196,7 @@ class PhotoManager: ObservableObject {
         }
         
         isFetching = true
+        cancelAnalysis()   // 옛 목록 분석이 새 목록 결과에 섞이지 않게
         currentFilterYear = year
         currentFilterMonth = month
         print("ZAKAR Log: PhotoManager - fetchPhotos started (year: \(year?.description ?? "nil"), month: \(month?.description ?? "nil"))")
@@ -218,39 +232,37 @@ class PhotoManager: ObservableObject {
         }
     }
 
+    /// 사진 수천~수만 장을 하나씩 훑는 작업이라 화면 스레드 밖에서 한다 (화면이 멈추지 않게)
+    nonisolated private static func fetchImageAssets(year: Int?, month: Int?) -> (filtered: [PHAsset], total: Int) {
+        let options = PHFetchOptions()
+        // 시간순 정렬 (최신 것부터) - 사용자가 최근 사진을 먼저 보도록
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        let assets = PHAsset.fetchAssets(with: .image, options: options)
+        var tempAll: [PHAsset] = []
+        tempAll.reserveCapacity(assets.count)
+        assets.enumerateObjects { (asset, _, _) in
+            tempAll.append(asset)
+        }
+        guard let y = year else { return (tempAll, tempAll.count) }
+        let cal = Calendar.current
+        let filtered = tempAll.filter { asset in
+            guard let d = asset.creationDate else { return false }
+            let comps = cal.dateComponents([.year, .month], from: d)
+            if let m = month { return comps.year == y && comps.month == m }
+            return comps.year == y
+        }
+        return (filtered, tempAll.count)
+    }
+
     private func loadAssets(year: Int?, month: Int?) {
         Task(priority: .userInitiated) {
-            let options = PHFetchOptions()
-            // 시간순 정렬 (최신 것부터) - 사용자가 최근 사진을 먼저 보도록
-            options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-            let assets = PHAsset.fetchAssets(with: .image, options: options)
-            var tempAll: [PHAsset] = []
-            assets.enumerateObjects { (asset, _, _) in
-                tempAll.append(asset)
-            }
-            
-            print("ZAKAR Log: PhotoManager - Fetched \(tempAll.count) photos")
-
-            let filtered: [PHAsset]
-            if let y = year, let m = month {
-                let cal = Calendar.current
-                filtered = tempAll.filter { asset in
-                    guard let d = asset.creationDate else { return false }
-                    let comps = cal.dateComponents([.year, .month], from: d)
-                    return comps.year == y && comps.month == m
-                }
-            } else if let y = year {
-                let cal = Calendar.current
-                filtered = tempAll.filter { asset in
-                    guard let d = asset.creationDate else { return false }
-                    let comps = cal.dateComponents([.year], from: d)
-                    return comps.year == y
-                }
-            } else {
-                filtered = tempAll
-            }
+            let (filtered, total) = await Task.detached(priority: .userInitiated) {
+                PhotoManager.fetchImageAssets(year: year, month: month)
+            }.value
+            print("ZAKAR Log: PhotoManager - Fetched \(total) photos")
 
             await MainActor.run {
+                self.loadedLibraryCount = total
                 self.allPhotos = filtered
                 self.isLoadingList = false
                 self.groupedPhotos = []
@@ -277,15 +289,39 @@ class PhotoManager: ObservableObject {
         }
         guard !didAnalyzeForCurrentList, !allPhotos.isEmpty else { return }
         didAnalyzeForCurrentList = true
-        Task { @MainActor in self.isAnalyzing = true }
+        cancelAnalysis()
+        let generation = analysisGeneration
+        isAnalyzing = true
+        groupedPhotos = []   // 분석 시작 전 이전 결과 초기화
 
-        // 분석 시작 전 이전 결과 초기화
-        Task { @MainActor in self.groupedPhotos = [] }
-
-        Task(priority: .userInitiated) { [assets = self.allPhotos] in
-            await self.analyzeGroupsProgressive(assets: assets)
-            await MainActor.run { self.isAnalyzing = false }
+        analysisTask = Task(priority: .userInitiated) { [assets = self.allPhotos] in
+            await self.analyzeGroupsProgressive(assets: assets, generation: generation)
+            if generation == self.analysisGeneration { self.isAnalyzing = false }
         }
+    }
+
+    /// 진행 중인 분석을 멈추고 회차를 올린다 — 멈춘 분석은 더 이상 그룹을 붙이지 않는다
+    private func cancelAnalysis() {
+        analysisTask?.cancel()
+        analysisTask = nil
+        analysisGeneration += 1
+    }
+
+    private func isCurrentAnalysis(_ generation: Int) -> Bool {
+        !Task.isCancelled && generation == analysisGeneration
+    }
+
+    // MARK: - 라이브러리 변경 반영
+    /// 앱에 돌아왔을 때 호출한다. 그사이 사진을 찍거나 지웠으면(전체 장수가 달라졌으면) 다시 읽는다.
+    /// 장수만 비교하므로 같은 수만큼 추가·삭제된 경우는 놓칠 수 있다 (자주 부르기에 가볍게 유지).
+    func refreshIfLibraryChanged() {
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        guard status == .authorized || status == .limited, !isFetching, loadedLibraryCount > 0 else { return }
+        let count = PHAsset.fetchAssets(with: .image, options: nil).count
+        guard count != loadedLibraryCount else { return }
+        print("ZAKAR Log: PhotoManager - 라이브러리 변경 감지 (\(loadedLibraryCount) → \(count)), 다시 읽음")
+        shouldAnalyzeAfterLoad = true
+        fetchPhotos(year: currentFilterYear, month: currentFilterMonth, force: true)
     }
 
     // MARK: - 임시 휴지통 (공유 상태)
@@ -293,24 +329,38 @@ class PhotoManager: ObservableObject {
     @MainActor
     func loadTrash() {
         let ids = LocalDB.shared.loadTrashIdentifiers()
-        guard !ids.isEmpty else { trashAssets = []; return }
+        guard !ids.isEmpty else { trashAssets = []; unresolvedTrashIDs = []; return }
         let fetch = PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil)
         var temp: [PHAsset] = []
         fetch.enumerateObjects { asset, _, _ in temp.append(asset) }
         trashAssets = temp
+        let found = Set(temp.map(\.localIdentifier))
+        unresolvedTrashIDs = ids.filter { !found.contains($0) }
     }
 
     /// 현재 trashAssets를 LocalDB에 저장합니다.
+    /// 지금 읽을 수 없는 사진 id(제한 접근 등)도 함께 남긴다 — 빼고 저장하면 휴지통에서 영영 사라진다.
     func saveTrash() {
         let ids = trashAssets.map { $0.localIdentifier }
-        LocalDB.shared.saveTrashIdentifiers(ids)
+        let shown = Set(ids)
+        if !LocalDB.shared.saveTrashIdentifiers(ids + unresolvedTrashIDs.filter { !shown.contains($0) }) {
+            print("ZAKAR Log: ⚠️ 휴지통 저장 실패 — 다음 실행 때 휴지통 목록이 이전 상태로 보일 수 있음")
+        }
     }
 
     // MARK: - 핵심 기능: 실제 사진 라이브러리에서 삭제
     /// - Parameters:
     ///   - assets: 삭제할 PHAsset 배열
     ///   - completion: 삭제 성공 여부를 반환하는 클로저
+    enum DeleteOutcome { case deleted, cancelled, failed }
+
     func deleteAssets(_ assets: [PHAsset], completion: @escaping (Bool) -> Void) {
+        deleteAssets(assets) { outcome in completion(outcome == .deleted) }
+    }
+
+    /// 시스템 확인창에서 '취소'를 누른 것(cancelled)과 실제 실패(failed)를 구분해 돌려준다 —
+    /// 취소했는데 "권한을 확인하라"는 오류가 뜨면 사용자가 앱이 고장 난 줄 안다
+    func deleteAssets(_ assets: [PHAsset], outcome: @escaping (DeleteOutcome) -> Void) {
         // 삭제 전 용량 추정 (HEIC 평균 ~3.5MB, JPEG 평균 ~2.5MB 기준)
         let estimatedMB = assets.reduce(0.0) { sum, asset in
             let mb: Double = asset.mediaType == .image ? 3.5 : 15.0
@@ -327,11 +377,16 @@ class PhotoManager: ObservableObject {
                     self.recordCleanupStats(deletedCount: assets.count, savedMB: estimatedMB)
                     // 삭제 후 강제 새로고침 (스킵 최적화 우회)
                     self.shouldAnalyzeAfterLoad = true
-                    self.fetchPhotos(force: true)
+                    // 보던 필터(월별 등) 그대로 다시 읽는다 — 필터 없이 읽으면 월별 화면이 전체 목록으로 바뀐다
+                    self.fetchPhotos(year: self.currentFilterYear, month: self.currentFilterMonth, force: true)
+                    outcome(.deleted)
                 } else {
-                    print("ZAKAR Log: 사진 삭제 실패 또는 유저 거부: \(error?.localizedDescription ?? "알 수 없는 에러")")
+                    let cancelled = (error as NSError?).map {
+                        $0.domain == PHPhotosErrorDomain && $0.code == PHPhotosError.userCancelled.rawValue
+                    } ?? false
+                    print("ZAKAR Log: 사진 삭제 \(cancelled ? "취소" : "실패"): \(error?.localizedDescription ?? "알 수 없는 에러")")
+                    outcome(cancelled ? .cancelled : .failed)
                 }
-                completion(success)
             }
         }
     }
@@ -349,7 +404,7 @@ class PhotoManager: ObservableObject {
 
     // MARK: - 분석 로직: 유사 사진 그룹화 (점진적 표시)
     // 그룹이 완성될 때마다 UI에 즉시 반영하여 첫 결과를 빠르게 표시합니다.
-    private func analyzeGroupsProgressive(assets: [PHAsset]) async {
+    private func analyzeGroupsProgressive(assets: [PHAsset], generation: Int) async {
         guard !assets.isEmpty else {
             print("ZAKAR Log: analyzeGroupsProgressive - no assets to analyze")
             return
@@ -359,6 +414,10 @@ class PhotoManager: ObservableObject {
         var currentTimeGroup: [PHAsset] = []
 
         for asset in assets {
+            guard isCurrentAnalysis(generation) else {
+                print("ZAKAR Log: 이전 회차 분석 중단")
+                return
+            }
             guard let curDate = asset.creationDate else { continue }
 
             // 시간 임계값: 7초
@@ -369,15 +428,16 @@ class PhotoManager: ObservableObject {
                 if timeDiff <= 7 {
                     currentTimeGroup.append(asset)
                 } else {
-                    await flushTimeGroupIfReady(&currentTimeGroup)
+                    await flushTimeGroupIfReady(&currentTimeGroup, generation: generation)
                     currentTimeGroup = [asset]
                 }
             } else {
-                await flushTimeGroupIfReady(&currentTimeGroup)
+                await flushTimeGroupIfReady(&currentTimeGroup, generation: generation)
                 currentTimeGroup = [asset]
             }
         }
-        await flushTimeGroupIfReady(&currentTimeGroup)
+        await flushTimeGroupIfReady(&currentTimeGroup, generation: generation)
+        guard isCurrentAnalysis(generation) else { return }
 
         await MainActor.run {
             print("✅ ZAKAR Log: Analysis complete - \(self.groupedPhotos.count) similar groups found")
@@ -386,18 +446,12 @@ class PhotoManager: ObservableObject {
 
     /// 시간 그룹을 시각적 유사도로 클러스터링 후 main thread에 append합니다.
     /// 한 시간 그룹 안에 서로 다른 유사 묶음이 여러 개 있으면 전부 감지됩니다.
-    private func flushTimeGroupIfReady(_ group: inout [PHAsset]) async {
+    private func flushTimeGroupIfReady(_ group: inout [PHAsset], generation: Int) async {
         guard group.count >= 2 else { return }
         let clusters = await clusterByVisualSimilarity(group: group)
-        guard !clusters.isEmpty else { return }
-        await MainActor.run {
-            self.groupedPhotos.append(contentsOf: clusters)
-        }
-    }
-
-    // 기존 호환성을 위해 유지 (외부에서 호출 안 함)
-    private func analyzeGroups(assets: [PHAsset]) {
-        Task(priority: .userInitiated) { await self.analyzeGroupsProgressive(assets: assets) }
+        // 계산하는 동안 새 회차가 시작됐으면 붙이지 않는다
+        guard !clusters.isEmpty, isCurrentAnalysis(generation) else { return }
+        groupedPhotos.append(contentsOf: clusters)
     }
 
     /// 시간 그룹 내 사진들을 union-find로 클러스터링합니다.
@@ -513,15 +567,24 @@ class PhotoManager: ObservableObject {
         }
         guard let cgImage = image?.zakarCGImage else { return nil }
 
+        // 신경망 실행은 무거우므로 화면 스레드 밖에서 (기본 MainActor 설정이라 그냥 부르면 메인에서 돈다)
+        let observation = await Task.detached(priority: .utility) {
+            PhotoManager.generateFeaturePrint(cgImage)
+        }.value
+        if let observation {
+            featurePrintCacheLock.withLock { featurePrintCache[key] = observation }
+        }
+        return observation
+    }
+
+    nonisolated private static func generateFeaturePrint(_ cgImage: CGImage) -> VNFeaturePrintObservation? {
         let request = VNGenerateImageFeaturePrintRequest()
         // 리비전 고정: OS 버전에 따라 거리 스케일이 달라지는 것을 방지 (임계값 일관성)
         request.revision = VNGenerateImageFeaturePrintRequestRevision1
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         do {
             try handler.perform([request])
-            guard let observation = request.results?.first else { return nil }
-            featurePrintCacheLock.withLock { featurePrintCache[key] = observation }
-            return observation
+            return request.results?.first
         } catch {
             print("ZAKAR Log: FeaturePrint 생성 실패 - \(error.localizedDescription)")
             return nil
@@ -541,7 +604,7 @@ class PhotoManager: ObservableObject {
         options.isNetworkAccessAllowed = true   // iCloud 사진도 해시 계산 가능하게
         options.resizeMode = .fast
 
-        let computedHash: UInt64 = await withCheckedContinuation { cont in
+        let cgImage: CGImage? = await withCheckedContinuation { cont in
             var didResume = false
             PHImageManager.default().requestImage(
                 for: asset,
@@ -551,10 +614,13 @@ class PhotoManager: ObservableObject {
             ) { image, _ in
                 guard !didResume else { return }
                 didResume = true
-                let hash = image.flatMap { self.calculatePHashSafe($0.zakarCGImage) } ?? 0
-                cont.resume(returning: hash)
+                cont.resume(returning: image?.zakarCGImage)
             }
         }
+        // DCT 계산(사진당 cos 약 13만 회)은 화면 스레드 밖에서 — 계산식은 그대로라 결과(해시)는 같다
+        let computedHash: UInt64 = await Task.detached(priority: .utility) {
+            PhotoManager.calculatePHashSafe(cgImage) ?? 0
+        }.value
 
         // hash=0 이면 이미지 로드 실패 → 캐시 저장 안 함 (다음 호출에서 재시도)
         if computedHash != 0 {
@@ -563,14 +629,14 @@ class PhotoManager: ObservableObject {
         return computedHash
     }
     
-    private func calculatePHashSafe(_ cgImage: CGImage?) -> UInt64? {
+    nonisolated private static func calculatePHashSafe(_ cgImage: CGImage?) -> UInt64? {
         autoreleasepool {
             guard let cgImage else { return nil }
             return calculatePHash(cgImage)
         }
     }
 
-    private func calculatePHash(_ cgImage: CGImage) -> UInt64 {
+    nonisolated private static func calculatePHash(_ cgImage: CGImage) -> UInt64 {
         // 1) Resize to 32x32 grayscale
         let width = 32, height = 32
         let colorSpace = CGColorSpaceCreateDeviceGray()
@@ -794,8 +860,9 @@ class PhotoManager: ObservableObject {
     func selectBestPhoto(from group: [PHAsset]) async -> PHAsset? {
         guard !group.isEmpty else { return nil }
 
-        // 1순위: 즐겨찾기
-        if let favorite = group.first(where: { $0.isFavorite }) {
+        // 1순위: 즐겨찾기 — PHAsset.isFavorite은 불러온 시점 값이라 최신 값으로 다시 읽는다
+        let favoriteIDs = Self.currentFavoriteIDs(in: group)
+        if let favorite = group.first(where: { favoriteIDs.contains($0.localIdentifier) }) {
             print("ZAKAR Log: Selected favorite photo")
             return favorite
         }
@@ -871,7 +938,17 @@ class PhotoManager: ObservableObject {
         }
     }
     
+    /// 사진들 중 지금 즐겨찾기인 것 (스냅샷이 아니라 라이브러리에서 새로 읽는다)
+    static func currentFavoriteIDs(in assets: [PHAsset]) -> Set<String> {
+        guard !assets.isEmpty else { return [] }
+        let fresh = PHAsset.fetchAssets(withLocalIdentifiers: assets.map(\.localIdentifier), options: nil)
+        var ids = Set<String>()
+        fresh.enumerateObjects { asset, _, _ in if asset.isFavorite { ids.insert(asset.localIdentifier) } }
+        return ids
+    }
+
     /// 전체 그룹 자동 정리 (품질 분석 포함이라 async)
+    /// 즐겨찾기한 사진은 대표가 아니어도 남긴다 — 즐겨찾기 2장인 그룹에서 1장이 휴지통으로 가지 않게
     func autoCleanAllGroups() async -> (keptCount: Int, removedCount: Int) {
         // 스냅샷은 main에서 (@Published 안전 접근)
         let groups = await MainActor.run { () -> [[PHAsset]] in
@@ -885,7 +962,8 @@ class PhotoManager: ObservableObject {
         for group in groups {
             if let best = await selectBestPhoto(from: group) {
                 kept.append(best)
-                let discarded = group.filter { $0 != best }
+                let favoriteIDs = Self.currentFavoriteIDs(in: group)
+                let discarded = group.filter { $0 != best && !favoriteIDs.contains($0.localIdentifier) }
                 removed.append(contentsOf: discarded)
 
                 // ML 학습 데이터 기록
@@ -893,15 +971,15 @@ class PhotoManager: ObservableObject {
             }
         }
 
-        // 휴지통으로 이동
-        var currentTrash = LocalDB.shared.loadTrashIdentifiers()
-        let removedIds = removed.map { $0.localIdentifier }
-        currentTrash.append(contentsOf: removedIds)
-        LocalDB.shared.saveTrashIdentifiers(currentTrash)
-
+        // 휴지통으로 이동 — 파일을 직접 고치지 않고 화면과 같은 목록(trashAssets)을 거쳐 저장한다.
+        // 파일만 고치면 화면의 휴지통 목록이 다음 저장 때 이 결과를 덮어써 버린다.
+        await MainActor.run {
+            var seen = Set(self.trashAssets.map(\.localIdentifier))
+            self.trashAssets.append(contentsOf: removed.filter { seen.insert($0.localIdentifier).inserted })
+            self.saveTrash()
+            self.isAutoCleaning = false
+        }
         print("ZAKAR Log: Auto-cleaned \(groups.count) groups - kept: \(kept.count), removed: \(removed.count)")
-
-        await MainActor.run { self.isAutoCleaning = false }
         return (kept.count, removed.count)
     }
 }

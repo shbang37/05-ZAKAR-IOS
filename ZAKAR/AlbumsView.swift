@@ -155,7 +155,6 @@ struct AlbumDetailView: View {
     @EnvironmentObject var photoManager: PhotoManager
     @State private var isCleanModeActive = false
     @State private var selectedPhotoIndex = 0
-    @State private var trashAssets: [PHAsset] = []
 
     private let grid = [GridItem(.adaptive(minimum: 100), spacing: 2)]
 
@@ -184,7 +183,12 @@ struct AlbumDetailView: View {
                 photos: assets,
                 startIndex: selectedPhotoIndex,
                 isPresented: $isCleanModeActive,
-                trashAlbum: $trashAssets,
+                // 다른 화면(홈·모든 사진)과 같은 실제 휴지통에 넣고 저장한다.
+                // 화면 안의 임시 목록에 넣으면 닫는 순간 정리한 내용이 사라진다.
+                trashAlbum: Binding(
+                    get: { photoManager.trashAssets },
+                    set: { photoManager.trashAssets = $0; photoManager.saveTrash() }
+                ),
                 photoManager: photoManager
             )
         }

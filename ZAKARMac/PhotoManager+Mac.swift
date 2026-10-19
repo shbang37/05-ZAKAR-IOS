@@ -74,8 +74,10 @@ extension PhotoManager {
 
         // 빈 앨범은 fetchAlbums의 assetCount > 0 필터에 걸리므로 직접 목록에 넣는다.
         let fetched = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [id], options: nil)
+        // 맨 앞에 끼우면 ⌘1~9 번호가 잠깐 밀렸다가, 다음 목록 갱신(이름순) 때 또 바뀐다 → 처음부터 이름순 자리에 넣는다
         if let collection = fetched.firstObject {
-            albums.insert(AlbumInfo(collection: collection), at: 0)
+            albums.append(AlbumInfo(collection: collection))
+            albums.sort { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         }
         print("ZAKAR Log: 앨범 생성 - \(name) (총 \(albums.count)개)")
         return id

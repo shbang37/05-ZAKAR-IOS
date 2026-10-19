@@ -320,9 +320,14 @@ struct TrashView: View {
                 guard !targets.isEmpty else { return }
                 print("ZAKAR Log: TrashView - Delete \(targets.count)장 시작")
 
-                photoManager.deleteAssets(targets) { success in
-                    print("ZAKAR Log: TrashView - Delete result: \(success)")
-                    if success {
+                photoManager.deleteAssets(targets) { (outcome: PhotoManager.DeleteOutcome) in
+                    print("ZAKAR Log: TrashView - Delete result: \(outcome)")
+                    switch outcome {
+                    case .cancelled:
+                        break   // 확인창에서 '취소'를 누른 것 — 오류가 아니므로 아무것도 띄우지 않는다
+                    case .failed:
+                        showDeleteError = true
+                    case .deleted:
                         // localIdentifier 기반 제거 (PHAsset 포인터 동일성 무관)
                         trashAssets.removeAll { targetIDs.contains($0.localIdentifier) }
                         selectedIDs.removeAll()
@@ -330,8 +335,6 @@ struct TrashView: View {
                         Task { @MainActor in photoManager.loadTrash() }
                         onDeleteSuccess()
                         if trashAssets.isEmpty { dismiss() }
-                    } else {
-                        showDeleteError = true
                     }
                 }
             }

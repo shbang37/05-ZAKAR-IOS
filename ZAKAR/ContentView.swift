@@ -17,6 +17,8 @@ struct ContentView: View {
     @State private var startPosition: Int = 0
     @State private var currentGroupIndex: Int = 0
     @State private var cleanModeID = UUID()  // fullScreenCover 강제 재생성용
+    /// 유사 그룹에서 연 정리인지 — 모든 사진에서 연 정리는 끝에 닿으면 그냥 닫혀야 한다
+    @State private var isGroupCleanMode = false
     @State private var pendingCleanModeRetry: (photoIndex: Int, groupIndex: Int?)? = nil  // 재시도용
 
     @State private var showCreateAlbumSheet = false
@@ -24,6 +26,10 @@ struct ContentView: View {
     
     @State private var showTutorialOverlay = false
     @State private var showAutoCleanDialog = false
+    /// '대표만 남기기' 결과 안내 — 끝났는지, 몇 장이 휴지통으로 갔는지 알려 준다
+    @State private var autoCleanResult: (kept: Int, removed: Int)?
+    /// 처음 나타날 때만 시작 탭을 맞춘다 — 정리 화면을 닫을 때마다 onAppear가 다시 불려 보던 탭이 바뀌던 문제
+    @State private var didSetInitialTab = false
 
     // 스크롤 방향 썸네일 프리페치 — 그리드와 유사 리스트는 썸네일 크기가 달라
     // (캐시 키가 targetSize를 포함) 각각 독립 인스턴스를 쓴다
@@ -324,10 +330,9 @@ struct ContentView: View {
                                 set: { photoManager.trashAssets = $0; photoManager.saveTrash() }
                             ),
                             photoManager: photoManager,
-                            onFinishGroup: {
-                                // 그룹 정리 완료 시 다음 그룹으로 자동 이동
-                                moveToNextGroup()
-                            })
+                            // 그룹 정리일 때만 끝에서 다음 그룹으로. 모든 사진은 끝에 닿으면 닫는다
+                            // (넘기면 관계없는 유사 그룹이 갑자기 열리던 문제)
+                            onFinishGroup: isGroupCleanMode ? { moveToNextGroup() } : nil)
                 .id(cleanModeID)  // ID로 강제 재생성
             }
             // [해결] TrashView 생성자 에러 수정: trashAssets 바인딩과 photoManager 주입
@@ -370,6 +375,18 @@ struct ContentView: View {
                     .navigationBarTitleDisplayMode(.inline)
                 }
             }
+            .alert("대표 사진 자동 선택 완료", isPresented: Binding(
+                get: { autoCleanResult != nil },
+                set: { if !$0 { autoCleanResult = nil } }
+            )) {
+                Button("확인", role: .cancel) { }
+            } message: {
+                if let r = autoCleanResult {
+                    Text(r.removed == 0
+                         ? "휴지통으로 옮길 사진이 없었습니다."
+                         : "대표 사진 \(r.kept)장을 남기고 \(r.removed)장을 휴지통으로 옮겼어요.\n즐겨찾기한 사진은 그대로 두었고, 휴지통에서 다시 복원할 수 있어요.")
+                }
+            }
             .alert("대표 사진 자동 선택", isPresented: $showAutoCleanDialog) {
                 Button("취소", role: .cancel) { }
                 Button("시작", role: .destructive) {
@@ -393,7 +410,10 @@ struct ContentView: View {
                 """)
             }
             .onAppear {
-                self.selectedTab = initialTabParam
+                if !didSetInitialTab {
+                    self.selectedTab = initialTabParam
+                    didSetInitialTab = true
+                }
 
                 // 연/월 필터가 있으면 무조건 새로 fetch
                 if filterYear != nil || filterMonth != nil {
@@ -417,8 +437,10 @@ struct ContentView: View {
                 Task { @MainActor in photoManager.loadTrash() }
             }
             .onDisappear {
-                // 필터링된 뷰에서 벗어날 때 리소스 정리
-                if filterYear != nil || filterMonth != nil {
+                // 필터링된 뷰에서 벗어날 때 리소스 정리.
+                // 정리 화면(전체 화면)을 띄울 때도 onDisappear가 불리므로 그때는 건너뛴다 —
+                // 그러지 않으면 그룹 정리 중에 분석 결과가 지워져 다음 그룹으로 못 넘어간다.
+                if (filterYear != nil || filterMonth != nil) && !isCleanModeActive {
                     print("ZAKAR Log: ContentView - onDisappear, resetting analysis state for filtered view")
                     photoManager.resetAnalysisState()
                 }
@@ -475,11 +497,13 @@ struct ContentView: View {
             }
             photoList = photoManager.groupedPhotos[gIndex]
             actualGroupIndex = gIndex
+            isGroupCleanMode = true
             print("ZAKAR Log: Using groupedPhotos[\(gIndex)] - count: \(photoList.count)")
         } else {
             // 모든 사진 탭
             photoList = photoManager.allPhotos
             actualGroupIndex = 0
+            isGroupCleanMode = false
             print("ZAKAR Log: Using allPhotos - count: \(photoList.count)")
         }
         
@@ -567,6 +591,7 @@ struct ContentView: View {
                 // 휴지통 목록 및 사진 목록 새로고침
                 photoManager.loadTrash()
                 photoManager.fetchPhotos()
+                autoCleanResult = (result.keptCount, result.removedCount)
             }
 
             print("ZAKAR Log: Auto-clean completed - kept: \(result.keptCount), removed: \(result.removedCount)")

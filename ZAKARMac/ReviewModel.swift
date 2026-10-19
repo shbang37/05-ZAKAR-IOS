@@ -45,38 +45,53 @@ final class ReviewSession: ObservableObject {
     func back() { if currentIndex > 0 { currentIndex -= 1 } }
     func jump(to index: Int) { if assets.indices.contains(index) { currentIndex = index } }
 
-    // MARK: - 처리
+    /// 사진 위치는 목록이 다시 읽히면 바뀌므로, 되돌리기·다시 실행은 **사진 id로** 찾아간다.
+    /// (번호로 기억하면 휴지통 비우기·새로고침 뒤 엉뚱한 사진에 적용된다)
+    @discardableResult
+    func jump(toID id: String) -> Bool {
+        guard let i = assets.firstIndex(where: { $0.localIdentifier == id }) else { return false }
+        currentIndex = i
+        return true
+    }
 
+    // MARK: - 처리 (되돌리기·다시 실행은 모두 처음 처리한 사진 id 기준)
+
+    /// ↑·⌫ — 지금 사진을 휴지통에 넣고 다음 사진으로
     func deleteCurrent(reduceMotion: Bool, undoManager: UndoManager? = nil) {
-        guard let pm = photoManager, let asset = current else { return }
-        let index = currentIndex
+        guard let asset = current else { return }
         flyController?.fly(assets: [asset], reduceMotion: reduceMotion)   // 흡입
-        let existing = Set(pm.trashAssets.map { $0.localIdentifier })
-        let wasAdded = !existing.contains(asset.localIdentifier)
+        delete(asset, undoManager: undoManager)
+        advance()
+    }
+
+    private func delete(_ asset: PHAsset, undoManager: UndoManager?) {
+        guard let pm = photoManager else { return }
+        let id = asset.localIdentifier
+        let wasAdded = !pm.trashAssets.contains { $0.localIdentifier == id }
         if wasAdded {
             pm.trashAssets.append(asset)
             pm.saveTrash()
         }
-        history[asset.localIdentifier] = .deleted
-
-        let id = asset.localIdentifier
+        let previous = history[id]
+        history[id] = .deleted
         undoManager?.registerUndo(withTarget: self) { s in
-            s.undoDelete(id: id, wasAdded: wasAdded, index: index, undoManager: undoManager)
+            s.undoDelete(asset, wasAdded: wasAdded, previous: previous, undoManager: undoManager)
         }
         undoManager?.setActionName("삭제")
-        advance()
     }
 
-    func undoDelete(id: String, wasAdded: Bool, index: Int, undoManager: UndoManager?) {
+    private func undoDelete(_ asset: PHAsset, wasAdded: Bool, previous: ReviewAction?, undoManager: UndoManager?) {
         guard let pm = photoManager else { return }
+        let id = asset.localIdentifier
         if wasAdded {
             pm.trashAssets.removeAll { $0.localIdentifier == id }
             pm.saveTrash()
         }
-        history[id] = nil
-        jump(to: index)
+        history[id] = previous
+        jump(toID: id)   // 되돌린 사진을 보여 준다
         undoManager?.registerUndo(withTarget: self) { s in
-            s.deleteCurrent(reduceMotion: true, undoManager: undoManager)
+            s.jump(toID: id)
+            s.delete(asset, undoManager: undoManager)   // 다시 실행 = 같은 사진을 다시 휴지통으로
         }
         undoManager?.setActionName("삭제")
     }
@@ -85,16 +100,21 @@ final class ReviewSession: ObservableObject {
     /// 이번 세션 기록(history)이 아니라 **실제 휴지통**을 본다 — 지난번에 버린 사진도 살릴 수 있게.
     @discardableResult
     func restoreCurrent(undoManager: UndoManager? = nil) -> Bool {
-        guard let pm = photoManager, let asset = current else { return false }
+        guard let asset = current else { return false }
+        return restore(asset, undoManager: undoManager)
+    }
+
+    @discardableResult
+    private func restore(_ asset: PHAsset, undoManager: UndoManager?) -> Bool {
+        guard let pm = photoManager else { return false }
         let id = asset.localIdentifier
         guard let trashIndex = pm.trashAssets.firstIndex(where: { $0.localIdentifier == id }) else { return false }
         pm.trashAssets.remove(at: trashIndex)
         pm.saveTrash()
         let previous = history[id]
         history[id] = nil
-        let index = currentIndex
         undoManager?.registerUndo(withTarget: self) { s in
-            s.undoRestore(asset, trashIndex: trashIndex, previous: previous, index: index, undoManager: undoManager)
+            s.undoRestore(asset, trashIndex: trashIndex, previous: previous, undoManager: undoManager)
         }
         undoManager?.setActionName("휴지통에서 살리기")
         return true
@@ -102,7 +122,7 @@ final class ReviewSession: ObservableObject {
 
     /// 살리기 취소 — 휴지통의 원래 자리로 되돌리고 그 사진으로 돌아간다
     private func undoRestore(_ asset: PHAsset, trashIndex: Int, previous: ReviewAction?,
-                             index: Int, undoManager: UndoManager?) {
+                             undoManager: UndoManager?) {
         guard let pm = photoManager else { return }
         let id = asset.localIdentifier
         if !pm.trashAssets.contains(where: { $0.localIdentifier == id }) {
@@ -110,90 +130,40 @@ final class ReviewSession: ObservableObject {
             pm.saveTrash()
         }
         history[id] = previous ?? .deleted
-        jump(to: index)
+        jump(toID: id)
         undoManager?.registerUndo(withTarget: self) { s in
-            s.jump(to: index)
-            s.restoreCurrent(undoManager: undoManager)
+            s.jump(toID: id)
+            s.restore(asset, undoManager: undoManager)
         }
         undoManager?.setActionName("휴지통에서 살리기")
     }
 
-    func toggleFavoriteCurrent(undoManager: UndoManager? = nil) {
-        guard let asset = current else { return }
-        // allPhotos에 담긴 PHAsset은 페치 시점 스냅샷이라 isFavorite이 갱신되지 않는다.
-        // 최신 값을 다시 읽지 않으면 F가 토글이 아니라 "설정"만 반복하게 된다.
-        let fresh = PHAsset.fetchAssets(withLocalIdentifiers: [asset.localIdentifier], options: nil).firstObject
-        let newValue = !(fresh?.isFavorite ?? asset.isFavorite)
-        setFavorite(id: asset.localIdentifier, to: newValue)
-        undoManager?.registerUndo(withTarget: self) { s in
-            s.setFavorite(id: asset.localIdentifier, to: !newValue)
-            undoManager?.setActionName("즐겨찾기")
-            undoManager?.registerUndo(withTarget: s) { s2 in s2.setFavorite(id: asset.localIdentifier, to: newValue) }
-        }
-        undoManager?.setActionName("즐겨찾기")
-    }
+    // 즐겨찾기(F)는 MacAppState.toggleFavorite을 쓴다 — 사진 id 기준이고 되돌리기·다시 실행이 이미 맞물려 있다.
 
-    /// 즐겨찾기 기록(필름스트립 하트)은 **라이브러리 쓰기가 성공한 뒤** 갱신한다.
-    /// 결과를 버리고 미리 표시하면 실패했는데 하트가 남아 "됐다"고 오해하게 된다.
-    func setFavorite(id: String, to value: Bool) {
-        let fetch = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil)
-        guard let asset = fetch.firstObject else { return }
-        PHPhotoLibrary.shared().performChanges({
-            PHAssetChangeRequest(for: asset).isFavorite = value
-        }, completionHandler: { success, error in
-            Task { @MainActor in
-                guard success else {
-                    print("ZAKAR Log: 즐겨찾기 실패 - \(error?.localizedDescription ?? "알 수 없음")")
-                    return
-                }
-                self.history[id] = value ? .favorited : nil
-                self.onLibraryChanged?()
-            }
-        })
-    }
-
-    /// 사진을 앨범에 실제로 추가한다. PhotoKit 쓰기가 실패할 수 있으므로
-    /// 결과를 버리지 않고 `onResult`로 돌려준다 (실패를 조용히 넘기면 "넣었는데 없다"가 된다).
-    func moveCurrentToAlbum(_ index: Int,
-                            undoManager: UndoManager? = nil,
-                            onResult: ((Bool) -> Void)? = nil) {
+    /// ⌘1~9 — 사진을 앨범에 넣고 다음 사진으로.
+    /// 앨범은 **번호가 아니라 앨범 자체**로 기억하고, 되돌릴 땐 이번에 새로 들어간 경우에만 뺀다
+    /// (PhotoManager.addToAlbumUndoably). 원래 그 앨범에 있던 사진은 그대로 둔다.
+    func moveCurrentToAlbum(_ index: Int, undoManager: UndoManager, onResult: ((Bool) -> Void)? = nil) {
         guard let pm = photoManager, let asset = current, pm.albums.indices.contains(index) else {
             onResult?(false); return
         }
         let album = pm.albums[index]
-        let assetIndex = currentIndex
-        pm.addAssets([asset], toAlbum: album.collection) { [weak self] success in
-            if success { self?.onLibraryChanged?() }   // 다시 실행(⌘⇧Z) 때도 장수가 갱신되도록
-            onResult?(success)
-        }
-        history[asset.localIdentifier] = .moved(album.title)
-
-        let id = asset.localIdentifier
-        undoManager?.registerUndo(withTarget: self) { s in
-            s.undoMoveToAlbum(id: id, albumIndex: index, assetIndex: assetIndex, undoManager: undoManager)
-        }
-        undoManager?.setActionName("앨범으로 이동")
+        pm.addToAlbumUndoably([asset], album: album, undo: undoManager,
+                              completion: { success in onResult?(success) },
+                              onChange: { [weak self] in self?.onLibraryChanged?() })
+        // 같은 이벤트 안의 등록이라 위 앨범 되돌리기와 한 묶음으로 ⌘Z 된다
+        markMoved(asset.localIdentifier, to: album.title, undoManager: undoManager)
         advance()
     }
 
-    func undoMoveToAlbum(id: String, albumIndex: Int, assetIndex: Int, undoManager: UndoManager?) {
-        guard let pm = photoManager, pm.albums.indices.contains(albumIndex) else { return }
-        let album = pm.albums[albumIndex]
-        let fetch = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil)
-        guard let asset = fetch.firstObject else { return }
-        // 앨범에서 제거
-        PHPhotoLibrary.shared().performChanges({
-            if let req = PHAssetCollectionChangeRequest(for: album.collection) {
-                req.removeAssets([asset] as NSArray)
-            }
-        }, completionHandler: { success, _ in
-            Task { @MainActor in if success { self.onLibraryChanged?() } }   // 사이드바 장수·앨범 화면 갱신
-        })
-        history[id] = nil
-        jump(to: assetIndex)
-        undoManager?.registerUndo(withTarget: self) { s in
-            s.moveCurrentToAlbum(albumIndex, undoManager: undoManager)
+    /// 필름스트립 폴더 표시 + 되돌릴 때 그 사진으로 돌아가기 (앨범 쓰기 자체는 PhotoManager가 되돌린다)
+    private func markMoved(_ id: String, to title: String, undoManager: UndoManager) {
+        let previous = history[id]
+        history[id] = .moved(title)
+        undoManager.registerUndo(withTarget: self) { s in
+            s.history[id] = previous
+            s.jump(toID: id)
+            undoManager.registerUndo(withTarget: s) { s2 in s2.markMoved(id, to: title, undoManager: undoManager) }
         }
-        undoManager?.setActionName("앨범으로 이동")
     }
 }

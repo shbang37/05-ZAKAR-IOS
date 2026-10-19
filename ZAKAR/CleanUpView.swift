@@ -18,6 +18,13 @@ struct CleanUpView: View {
     @State private var currentUIImage: UIImage?
     @State private var offset: CGSize = .zero
     @State private var isImportant: Bool = false
+    /// 카드가 휴지통으로 날아가 다음 카드가 자리 잡을 때까지 true — 이 사이 입력을 막아
+    /// 날아간 사진 대신 다음 사진이 휴지통에 들어가는 일을 막는다
+    @State private var isTransitioning = false
+    /// 이번 화면에서 바꾼 즐겨찾기 값 (PHAsset.isFavorite은 불러온 시점 값이라 바뀌지 않는다)
+    @State private var favoriteOverrides: [String: Bool] = [:]
+    /// 사진을 불러오지 못한 인덱스 (iCloud 오프라인·삭제된 사진) — 무한 로딩 대신 안내를 보여 준다
+    @State private var failedIndices: Set<Int> = []
     @State private var isPullingDown: Bool = false
     @State private var hapticThresholdTriggered = false
     @State private var dragIntent: DragIntent = .undecided
@@ -120,11 +127,17 @@ struct CleanUpView: View {
                     
                     Spacer()
                     
-                    Image(systemName: isImportant ? "star.fill" : "star")
-                        .foregroundColor(isImportant ? AppTheme.gracefulGold : AppTheme.gracefulGold.opacity(0.5))
-                        .font(.headline)
-                        .frame(width: 30)
-                        .shadow(color: isImportant ? AppTheme.gracefulGold.opacity(0.5) : .clear, radius: 8)
+                    // 눌러도 즐겨찾기가 바뀌도록 버튼으로 — 스와이프가 어려운 사람·VoiceOver 사용자도 쓸 수 있게
+                    Button { toggleFavorite() } label: {
+                        Image(systemName: isImportant ? "star.fill" : "star")
+                            .foregroundColor(isImportant ? AppTheme.gracefulGold : AppTheme.gracefulGold.opacity(0.5))
+                            .font(.headline)
+                            .frame(width: 30, height: 30)
+                            .shadow(color: isImportant ? AppTheme.gracefulGold.opacity(0.5) : .clear, radius: 8)
+                            .contentShape(Rectangle())
+                    }
+                    .disabled(isTransitioning)
+                    .accessibilityLabel(isImportant ? "즐겨찾기 해제" : "즐겨찾기")
 
                     Button {
                         Task { await exportCurrentPhotoForSharing() }
@@ -244,6 +257,7 @@ struct CleanUpView: View {
                                     .simultaneously(with:
                                         DragGesture()
                                             .onChanged { gesture in
+                                                guard !isTransitioning else { return }
                                                 let h = gesture.translation.width
                                                 let v = gesture.translation.height
                                                 let dist = sqrt(h * h + v * v)
@@ -294,6 +308,36 @@ struct CleanUpView: View {
                                             .onEnded(handleGesture)
                                     )
                             )
+                            // 손으로 밀기 어려운 사람을 위한 VoiceOver 동작 (위로 밀기·아래로 밀기·좌우와 같은 일)
+                            .accessibilityElement()
+                            .accessibilityLabel(cardAccessibilityLabel)
+                            .accessibilityHint("위로 쓸어 올리면 휴지통, 아래로 내리면 즐겨찾기입니다. 동작 메뉴에서도 고를 수 있어요.")
+                            .accessibilityAction(named: "휴지통으로") { flyToTrash() }
+                            .accessibilityAction(named: isImportant ? "즐겨찾기 해제" : "즐겨찾기") { toggleFavorite() }
+                            .accessibilityAction(named: "다음 사진") { changePhoto(next: true) }
+                            .accessibilityAction(named: "이전 사진") { changePhoto(next: false) }
+                    } else if failedIndices.contains(currentIndex) {
+                        // 불러오지 못한 사진에서 멈추지 않도록 — 넘겨서 계속 정리할 수 있게
+                        VStack(spacing: 14) {
+                            Image(systemName: "icloud.slash")
+                                .font(.system(size: 40, weight: .light))
+                                .foregroundStyle(.white.opacity(0.7))
+                            Text("이 사진을 불러올 수 없어요")
+                                .font(.headline)
+                                .foregroundStyle(.white)
+                            Text("인터넷 연결을 확인하거나 다음 사진으로 넘어가세요")
+                                .font(.footnote)
+                                .foregroundStyle(.white.opacity(0.6))
+                            HStack(spacing: 12) {
+                                Button("이전") { changePhoto(next: false) }
+                                    .disabled(currentIndex == 0)
+                                Button("다음 사진") { changePhoto(next: true) }
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(AppTheme.gracefulGold)
+                            }
+                            .padding(.top, 4)
+                        }
+                        .frame(width: 340, height: 500)
                     } else {
                         ProgressView().tint(.white)
                     }
@@ -494,6 +538,7 @@ struct CleanUpView: View {
     }
 
     private func handleGesture(_ gesture: DragGesture.Value) {
+        guard !isTransitioning else { dragIntent = .undecided; return }
         hapticThresholdTriggered = false
         let intent = dragIntent
         dragIntent = .undecided
@@ -547,12 +592,13 @@ struct CleanUpView: View {
         let nextIndex: Int
         if next {
             guard currentIndex < photos.count - 1 else {
+                isTransitioning = false
                 if let onFinish = onFinishGroup { onFinish() } else { isPresented = false }
                 return
             }
             nextIndex = currentIndex + 1
         } else {
-            guard currentIndex > 0 else { return }
+            guard currentIndex > 0 else { isTransitioning = false; return }
             nextIndex = currentIndex - 1
         }
 
@@ -587,6 +633,7 @@ struct CleanUpView: View {
                 }
                 preloadAdjacent(around: currentIndex)
                 updateStarStatus()
+                isTransitioning = false   // 다음 카드가 자리 잡았으니 다시 입력을 받는다
 
                 // 다음 카드 오버레이 해제
                 nextCardVisible = false
@@ -634,7 +681,10 @@ struct CleanUpView: View {
     /// 휴지통 확정: 손을 뗀 지점에서 플릭 속도를 이어받아
     /// 실제 헤더 휴지통 버튼으로 빨려 들어가며 축소
     private func flyToTrash(velocity: CGSize = .zero) {
-        guard photos.indices.contains(currentIndex) else { return }
+        guard photos.indices.contains(currentIndex), !isTransitioning else { return }
+        // 손을 뗀 순간의 사진을 기억한다 — 0.34초 뒤의 "현재 사진"은 그사이 바뀌어 있을 수 있다
+        let asset = photos[currentIndex]
+        isTransitioning = true
         // 릴리즈 순간: 가벼운 시작 햅틱
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
 
@@ -664,7 +714,6 @@ struct CleanUpView: View {
             await MainActor.run {
                 // 도착 순간: 묵직한 햅틱 + trashAlbum 증가로 버튼 팝 애니메이션 발동
                 UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-                let asset = photos[currentIndex]
                 if !trashAlbum.contains(where: { $0.localIdentifier == asset.localIdentifier }) {
                     print("ZAKAR Log: CleanUpView - Adding to trash, total count will be: \(trashAlbum.count + 1)")
                     trashAlbum.append(asset)
@@ -766,21 +815,37 @@ struct CleanUpView: View {
                             }
                         }
                     }
-                    // 최종본(isDegraded=false)이면 캐시에 저장
-                    if !isDegraded {
+                    // 최종본(isDegraded=false)이면 캐시에 저장 — 현재 위치 근처만 (멀어진 사진은 메모리만 차지)
+                    if !isDegraded, abs(index - self.currentIndex) <= Self.cacheRadius {
                         self.imageCache[index] = img
                     }
+                    self.failedIndices.remove(index)
                 }
             } else {
                 print("ZAKAR Log: Preview callback - index \(index), img is nil, info: \(String(describing: info))")
+                // 저화질 단계가 아니라 최종 실패일 때만 (취소된 요청은 실패로 보지 않는다)
+                let cancelled = (info?[PHImageCancelledKey] as? Bool) ?? false
+                if !cancelled {
+                    Task { @MainActor in
+                        if self.currentUIImage == nil || index != self.currentIndex {
+                            self.failedIndices.insert(index)
+                            if index == self.currentIndex { self.imageOpacity = 1.0; self.imageScale = 1.0 }
+                        }
+                    }
+                }
             }
         }
 
         if index == currentIndex { currentRequestID = reqID }
     }
 
-    /// 현재 인덱스 앞뒤 각 2장을 미리 캐시에 로드합니다.
+    /// 캐시에 남길 범위 (현재 사진 앞뒤 몇 장). 한 장이 약 6MB라 무제한으로 쌓으면
+    /// 수백 장 넘긴 뒤 메모리가 GB 단위로 늘어 iOS가 앱을 강제로 끈다.
+    private static let cacheRadius = 3
+
+    /// 현재 인덱스 앞뒤 각 2장을 미리 캐시에 로드합니다. 범위 밖 캐시는 비웁니다.
     private func preloadAdjacent(around index: Int) {
+        imageCache = imageCache.filter { abs($0.key - index) <= Self.cacheRadius }
         // 앞 2장, 뒤 2장
         let targets = [index - 2, index - 1, index + 1, index + 2]
         for i in targets where photos.indices.contains(i) && imageCache[i] == nil {
@@ -799,7 +864,9 @@ struct CleanUpView: View {
                 guard let img else { return }
                 let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
                 if !isDegraded {
-                    Task { @MainActor in self.imageCache[i] = img }
+                    Task { @MainActor in
+                        if abs(i - self.currentIndex) <= Self.cacheRadius { self.imageCache[i] = img }
+                    }
                 }
             }
         }
@@ -807,26 +874,54 @@ struct CleanUpView: View {
     
     private func updateStarStatus() {
         if photos.indices.contains(currentIndex) {
-            isImportant = photos[currentIndex].isFavorite
+            let asset = photos[currentIndex]
+            isImportant = favoriteOverrides[asset.localIdentifier] ?? asset.isFavorite
         }
     }
 
+    /// 화면에 보이는 값(isImportant)의 반대로 정한다 — PHAsset.isFavorite은 불러온 시점 값이라
+    /// 그걸 기준으로 뒤집으면 두 번째부터는 해제가 안 된다
     private func toggleFavorite() {
+        guard photos.indices.contains(currentIndex) else { return }
         let asset = photos[currentIndex]
+        let newValue = !isImportant
         PHPhotoLibrary.shared().performChanges({
-            let request = PHAssetChangeRequest(for: asset)
-            request.isFavorite = !asset.isFavorite
+            PHAssetChangeRequest(for: asset).isFavorite = newValue
         }) { success, _ in
             if success {
-                Task { @MainActor in self.isImportant.toggle() }
+                Task { @MainActor in
+                    self.favoriteOverrides[asset.localIdentifier] = newValue
+                    if self.photos.indices.contains(self.currentIndex),
+                       self.photos[self.currentIndex].localIdentifier == asset.localIdentifier {
+                        self.isImportant = newValue
+                    }
+                }
             }
         }
     }
 
-    private func formatDate(_ date: Date) -> String {
+    /// 화면이 다시 그려질 때마다(카드를 끄는 동안 매 프레임) 새로 만들지 않도록 하나만 쓴다
+    private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy년 MM월 dd일"
-        return formatter.string(from: date)
+        return formatter
+    }()
+
+    private func formatDate(_ date: Date) -> String {
+        Self.dateFormatter.string(from: date)
+    }
+
+    private var cardAccessibilityLabel: String {
+        var parts = ["사진 \(currentIndex + 1) / \(photos.count)"]
+        if photos.indices.contains(currentIndex), let date = photos[currentIndex].creationDate {
+            parts.append(formatDate(date))
+        }
+        if isImportant { parts.append("즐겨찾기") }
+        if photos.indices.contains(currentIndex),
+           trashAlbum.contains(where: { $0.localIdentifier == photos[currentIndex].localIdentifier }) {
+            parts.append("휴지통에 있음")
+        }
+        return parts.joined(separator: ", ")
     }
     
     // MARK: - Add to Album Flow
@@ -837,7 +932,7 @@ struct CleanUpView: View {
     }
     
     private func addCurrentPhotoToLastAlbum() {
-        guard let album = lastUsedAlbum, photos.indices.contains(currentIndex) else { return }
+        guard let album = lastUsedAlbum, photos.indices.contains(currentIndex), !isTransitioning else { return }
         let asset = photos[currentIndex]
         photoManager.addAssets([asset], toAlbum: album) { success in
             if success {
@@ -858,7 +953,7 @@ struct CleanUpView: View {
     }
     
     private func addCurrentPhoto(to album: PHAssetCollection) {
-        guard photos.indices.contains(currentIndex) else { return }
+        guard photos.indices.contains(currentIndex), !isTransitioning else { return }
         let asset = photos[currentIndex]
         photoManager.addAssets([asset], toAlbum: album) { success in
             if success {

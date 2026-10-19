@@ -21,6 +21,10 @@ struct ReviewView: View {
     @ObservedObject var session: ReviewSession
 
     @FocusState private var focused: Bool
+    /// 지금 미리 받아 두는 사진들 — 다음에 바뀔 때 범위를 벗어난 것은 캐시에서 내린다
+    @State private var prefetched: [PHAsset] = []
+    /// 날짜·크기·용량 한 줄 — 용량 조회(PHAssetResource)가 무거워 사진이 바뀔 때 한 번만 계산
+    @State private var metadataText = ""
     @AppStorage("reviewGuideShown") private var guideShown = false
     @State private var showGuide = false
 
@@ -113,9 +117,10 @@ struct ReviewView: View {
             VStack(spacing: 10) {
                 MacLargeImage(asset: asset)
                     .reportCardFrame(id: asset.localIdentifier, to: flyController)   // 흡입 시작 위치
-                Text(metadataLine(asset))
+                Text(metadataText)
                     .font(.callout)
                     .foregroundStyle(AppTheme.subText)
+                    .task(id: asset.localIdentifier) { metadataText = metadataLine(asset) }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(20)
@@ -170,7 +175,7 @@ struct ReviewView: View {
                     appState.showToast("‘\(title)’ 앨범에 넣지 못했습니다")
                     return
                 }
-                appState.showToast("‘\(title)’ 앨범으로 이동")   // 장수 갱신은 onLibraryChanged가 한다
+                appState.showToast("‘\(title)’ 앨범에 넣었습니다")   // 장수 갱신은 onLibraryChanged가 한다
             }
             return true
         }
@@ -186,7 +191,8 @@ struct ReviewView: View {
             }
         case .leftArrow:  session.back()
         case .rightArrow: session.advance()
-        case .letterF:    session.toggleFavoriteCurrent(undoManager: undoManager)
+        case .letterF:
+            if let asset = session.current { appState.toggleFavorite(asset.localIdentifier) }
         case .escape:     appState.endReview()   // 확대 중이면 위에서 확대가 먼저 닫힌다
         case .space:
             appState.quickLook = QuickLookRequest(assets: photoManager.allPhotos,
@@ -200,23 +206,35 @@ struct ReviewView: View {
         photoManager.trashAssets.contains { $0.localIdentifier == asset.localIdentifier }
     }
 
-    /// 다음 3장 원본 프리페치
+    /// 다음 3장 원본 프리페치.
+    /// 캐시가 맞으려면 MacLargeImage의 실제 요청과 매니저·크기·옵션이 같아야 한다 (ReviewImageSpec).
+    /// 지나간 사진은 캐시에서 내려 큰 이미지가 메모리에 쌓이지 않게 한다.
     private func prefetchNext() {
         let assets = photoManager.allPhotos
         let start = session.currentIndex + 1
         let end = min(assets.count, start + 3)
-        guard start < end else { return }
-        let scale = NSScreen.main?.backingScaleFactor ?? 2.0
-        let size = CGSize(width: 1200 * scale, height: 1200 * scale)
-        ThumbnailCache.manager.startCachingImages(for: Array(assets[start..<end]),
-                                                  targetSize: size, contentMode: .aspectFit,
-                                                  options: ThumbnailCache.requestOptions())
+        let next = start < end ? Array(assets[start..<end]) : []
+        let nextIDs = Set(next.map(\.localIdentifier))
+        let stale = prefetched.filter { !nextIDs.contains($0.localIdentifier) }
+        if !stale.isEmpty {
+            ThumbnailCache.manager.stopCachingImages(for: stale, targetSize: ReviewImageSpec.targetSize,
+                                                     contentMode: .aspectFit, options: ReviewImageSpec.options())
+        }
+        if !next.isEmpty {
+            ThumbnailCache.manager.startCachingImages(for: next, targetSize: ReviewImageSpec.targetSize,
+                                                      contentMode: .aspectFit, options: ReviewImageSpec.options())
+        }
+        prefetched = next
     }
 
-    private func metadataLine(_ asset: PHAsset) -> String {
+    private static let dateFormatter: DateFormatter = {
         let df = DateFormatter()
         df.dateFormat = "yyyy.MM.dd"
-        let date = asset.creationDate.map { df.string(from: $0) } ?? "—"
+        return df
+    }()
+
+    private func metadataLine(_ asset: PHAsset) -> String {
+        let date = asset.creationDate.map { Self.dateFormatter.string(from: $0) } ?? "—"
         let dims = "\(asset.pixelWidth)×\(asset.pixelHeight)"
         let mb = fileSizeMB(asset)
         return mb.map { "\(date) · \(dims) · \(String(format: "%.1f", $0))MB" } ?? "\(date) · \(dims)"
@@ -231,6 +249,20 @@ struct ReviewView: View {
 }
 
 // MARK: - 대형 프리뷰 (2단계 로드)
+
+/// 리뷰 큰 이미지 요청 규격 — 미리 받기(prefetchNext)와 실제 요청이 같은 값을 써야 캐시가 맞는다
+private enum ReviewImageSpec {
+    static var targetSize: CGSize {
+        let scale = NSScreen.main?.backingScaleFactor ?? 2.0
+        return CGSize(width: 1400 * scale, height: 1400 * scale)
+    }
+    static func options() -> PHImageRequestOptions {
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .opportunistic   // 저화질 즉시 → 고화질 교체 (2단계)
+        options.isNetworkAccessAllowed = true
+        return options
+    }
+}
 
 private struct MacLargeImage: View {
     let asset: PHAsset
@@ -248,19 +280,16 @@ private struct MacLargeImage: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { load() }
         .onChange(of: asset.localIdentifier) { _, _ in image = nil; load() }
-        .onDisappear { if let rid = requestID { PHImageManager.default().cancelImageRequest(rid) } }
+        .onDisappear { if let rid = requestID { ThumbnailCache.manager.cancelImageRequest(rid) } }
     }
 
     private func load() {
-        if let rid = requestID { PHImageManager.default().cancelImageRequest(rid) }
-        let options = PHImageRequestOptions()
-        options.deliveryMode = .opportunistic   // 저화질 즉시 → 고화질 교체 (2단계)
-        options.isNetworkAccessAllowed = true
-        let scale = NSScreen.main?.backingScaleFactor ?? 2.0
-        let target = CGSize(width: 1400 * scale, height: 1400 * scale)
+        if let rid = requestID { ThumbnailCache.manager.cancelImageRequest(rid) }
         let requested = asset.localIdentifier
-        requestID = PHImageManager.default().requestImage(
-            for: asset, targetSize: target, contentMode: .aspectFit, options: options
+        // 미리 받아 둔 캐시를 맞히려고 같은 매니저(ThumbnailCache.manager)·같은 규격으로 요청
+        requestID = ThumbnailCache.manager.requestImage(
+            for: asset, targetSize: ReviewImageSpec.targetSize, contentMode: .aspectFit,
+            options: ReviewImageSpec.options()
         ) { img, _ in
             Task { @MainActor in
                 guard self.asset.localIdentifier == requested, let img else { return }
@@ -356,12 +385,16 @@ private struct FilmstripView: View {
 private struct KeyGuideOverlay: View {
     let onClose: () -> Void
     @FocusState private var focused: Bool
+    /// 지금 미리 받아 두는 사진들 — 다음에 바뀔 때 범위를 벗어난 것은 캐시에서 내린다
+    @State private var prefetched: [PHAsset] = []
+    /// 날짜·크기·용량 한 줄 — 용량 조회(PHAssetResource)가 무거워 사진이 바뀔 때 한 번만 계산
+    @State private var metadataText = ""
 
     private let rows: [(String, String)] = [
         ("↑  또는  ⌫", "휴지통으로 이동"),
         ("↓", "휴지통에서 살리기"),
         ("F", "즐겨찾기 토글"),
-        ("⌘1 ~ ⌘9", "지정 앨범으로 이동"),
+        ("⌘1 ~ ⌘9", "지정 앨범에 넣기"),
         ("← →", "이전 / 다음 사진"),
         ("Space", "크게 보기"),
         ("⌘Z", "되돌리기 (⇧ 함께 = 다시 실행)"),

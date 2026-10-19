@@ -50,7 +50,7 @@ struct AllPhotosGridView: View {
                 .foregroundStyle(AppTheme.subText)
             Spacer()
             if selection.isEmpty {
-                Text("클릭 선택 · ⌘클릭 추가 · 빈 곳 끌어 범위 선택 · 더블클릭 리뷰")
+                Text("클릭 선택 · ⌘클릭 추가 · 빈 곳 끌어 범위 선택 · 더블클릭 리뷰 · ⌫ 휴지통")
                     .font(.caption)
                     .foregroundStyle(AppTheme.subText.opacity(0.7))
             } else {
@@ -99,11 +99,22 @@ struct AllPhotosGridView: View {
                 .coordinateSpace(name: Self.gridSpace)
             }
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
+            // 창 폭이 바뀌면 열 수가 바뀌어 저장해 둔 셀 위치가 틀어진다 — 비우고 보이는 셀부터 다시 모은다
+            // (안 비우면 범위 선택이 화면에 없는 사진까지 잘못 고른다)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { _ in cellFrames.frames.removeAll() }
             .task { await focusAfterReview(proxy) }
         }
         .macKeys(for: .allPhotos) { key, mods in
-            guard key == .enter, mods.zakarIsPlainKey else { return false }
-            startReview()
+            guard mods.zakarIsPlainKey else { return false }
+            switch key {
+            case .enter:
+                startReview()
+            case .delete, .upArrow:   // 리뷰와 같은 뜻: 위·⌫ = 휴지통
+                guard !selection.isEmpty else { return false }
+                trashSelection()
+            default:
+                return false
+            }
             return true
         }
         .overlay(alignment: .center) {
@@ -146,6 +157,15 @@ struct AllPhotosGridView: View {
             // 한 번 클릭은 즉시 반응해야 하므로 simultaneous로 단다
             // (onTapGesture(count: 1)을 같이 쓰면 더블클릭을 기다리느라 클릭마다 0.3초씩 늦는다)
             .onTapGesture(count: 2) { appState.startReview(at: index) }
+            .contextMenu {
+                let targets = selection.contains(asset.localIdentifier) ? selection.count : 1
+                Button("이 사진부터 리뷰") { appState.startReview(at: index) }
+                Divider()
+                Button(targets > 1 ? "휴지통으로 보내기 (\(targets)장)" : "휴지통으로 보내기") {
+                    if !selection.contains(asset.localIdentifier) { selection = [asset.localIdentifier] }
+                    trashSelection()
+                }
+            }
             .simultaneousGesture(TapGesture().onEnded { click(asset) })
             // 앨범/휴지통으로 드래그 — 선택한 사진을 끌면 선택 전체가 간다 (끄는 순간에 계산)
             .draggable(dragPayload(for: asset)) {
@@ -241,6 +261,16 @@ struct AllPhotosGridView: View {
             selection = [id]
         }
         anchorID = id
+    }
+
+    /// ⌫·↑·오른쪽 클릭 — 선택한 사진을 휴지통으로 (⌘Z로 되돌릴 수 있다)
+    private func trashSelection() {
+        let assets = photoManager.allPhotos.filter { selection.contains($0.localIdentifier) }
+        guard !assets.isEmpty else { return }
+        photoManager.addToTrashUndoably(assets, undo: appState.undo)
+        appState.showToast("휴지통으로 \(assets.count)장 — ⌘Z로 되돌릴 수 있어요")
+        selection.removeAll()
+        anchorID = nil
     }
 
     /// 마지막으로 클릭한 사진 → 선택 중 가장 앞 사진 → 첫 사진 순으로 시작점을 고른다

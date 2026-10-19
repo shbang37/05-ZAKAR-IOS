@@ -23,6 +23,9 @@ struct ZAKARMacApp: App {
                 .environmentObject(appState)
                 .frame(minWidth: 1040, idealWidth: 1280,
                        minHeight: 680, idealHeight: 840)
+                // 앱 색(진보라 배경·흰 글자)은 어두운 화면 기준이다. iOS처럼 고정하지 않으면
+                // macOS 라이트 모드에서 사이드바가 밝아져 흰 글자가 거의 보이지 않는다.
+                .preferredColorScheme(.dark)
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified(showsTitle: true))

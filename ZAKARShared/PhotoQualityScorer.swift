@@ -14,7 +14,7 @@ final class PhotoQualityScorer {
     private let cacheLock = NSLock()
     private var cache: [String: Double] = [:]
 
-    struct QualitySignals {
+    nonisolated struct QualitySignals {
         var sharpness: Double = 0.5    // 0~1
         var faceQuality: Double?       // 0~1, 얼굴 없으면 nil
         var aesthetics: Double?        // 0~1, iOS 18 미만이면 nil
@@ -28,7 +28,10 @@ final class PhotoQualityScorer {
         // 선명도 판별이 목적이므로 반드시 고품질 이미지로 분석
         // (fastFormat 썸네일은 자체 블러 때문에 점수를 오염시킴)
         guard let cgImage = await loadCGImage(for: asset) else { return 0.5 }
-        let signals = await analyze(cgImage: cgImage)
+        // 라플라시안·얼굴·미학 분석은 무거우므로 화면 스레드 밖에서
+        let signals = await Task.detached(priority: .utility) {
+            await PhotoQualityScorer.analyze(cgImage: cgImage)
+        }.value
         let total = combine(signals)
         print("ZAKAR Log: 품질 점수 - sharp=\(String(format: "%.2f", signals.sharpness)), face=\(signals.faceQuality.map { String(format: "%.2f", $0) } ?? "없음"), aes=\(signals.aesthetics.map { String(format: "%.2f", $0) } ?? "N/A") → total=\(String(format: "%.2f", total))")
         cacheLock.withLock { cache[key] = total }
@@ -57,7 +60,7 @@ final class PhotoQualityScorer {
 
     // MARK: - 분석
 
-    private func analyze(cgImage: CGImage) async -> QualitySignals {
+    nonisolated private static func analyze(cgImage: CGImage) async -> QualitySignals {
         var signals = QualitySignals()
         signals.sharpness = laplacianSharpness(cgImage)
 
@@ -85,7 +88,7 @@ final class PhotoQualityScorer {
 
     /// 라플라시안 분산 기반 선명도 (0~1)
     /// 128×128 그레이스케일로 축소 후 라플라시안 응답의 분산을 계산 — 분산이 클수록 선명
-    private func laplacianSharpness(_ cgImage: CGImage) -> Double {
+    nonisolated private static func laplacianSharpness(_ cgImage: CGImage) -> Double {
         let width = 128, height = 128
         let colorSpace = CGColorSpaceCreateDeviceGray()
         guard let ctx = CGContext(data: nil, width: width, height: height,

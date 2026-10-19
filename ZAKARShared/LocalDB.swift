@@ -125,15 +125,25 @@ final class LocalDB {
 
     func loadTrashIdentifiers() -> [String] {
         guard let data = try? Data(contentsOf: trashURL) else { return [] }
-        return (try? JSONDecoder().decode([String].self, from: data)) ?? []
+        if let ids = try? JSONDecoder().decode([String].self, from: data) { return ids }
+        // 해석할 수 없는 파일을 그대로 두면 다음 저장 때 빈 목록으로 덮어써져 휴지통 목록을 잃는다.
+        // 원본을 옆에 보관해 두고 빈 목록으로 시작한다.
+        let backup = baseURL.appendingPathComponent("trash.unreadable-\(Int(Date().timeIntervalSince1970)).json")
+        try? fm.moveItem(at: trashURL, to: backup)
+        print("LocalDB ⚠️ trash.json을 읽을 수 없어 \(backup.lastPathComponent)로 보관함")
+        return []
     }
 
-    func saveTrashIdentifiers(_ ids: [String]) {
+    /// 저장 성공 여부를 돌려준다 (디스크 부족 등으로 실패하면 호출 쪽이 알 수 있게)
+    @discardableResult
+    func saveTrashIdentifiers(_ ids: [String]) -> Bool {
         do {
             let data = try JSONEncoder().encode(ids)
             try data.write(to: trashURL, options: .atomic)
+            return true
         } catch {
             print("LocalDB saveTrashIdentifiers error: \(error)")
+            return false
         }
     }
 

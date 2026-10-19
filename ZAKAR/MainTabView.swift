@@ -5,6 +5,7 @@ struct MainTabView: View {
     @EnvironmentObject private var photoManager: PhotoManager
     @State private var selectedTab = 0
     @State private var showOnboarding = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack {
@@ -61,6 +62,10 @@ struct MainTabView: View {
                 print("🟢 ZAKAR Log: Onboarding completed - loading photos")
                 await loadPhotosAsync()
             }
+        }
+        // 앱을 백그라운드에 둔 사이 찍거나 지운 사진을 반영 (돌아올 때 전체 장수가 달라졌으면 다시 읽음)
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active, !showOnboarding { photoManager.refreshIfLibraryChanged() }
         }
         .fullScreenCover(isPresented: $showOnboarding) {
             OnboardingView {

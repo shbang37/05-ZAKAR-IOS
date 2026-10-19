@@ -134,7 +134,7 @@ struct GroupCompareView: View {
         }
 
         switch key {
-        case .enter:      performClean(keepOnlyRepresentative: true)
+        case .enter:      performClean(keepOnlyRepresentative: false)   // 화면에 보이는 선택 그대로 (↓ 유지·즐겨찾기 존중)
         case .space:      openQuickLook(decision)
         case .leftArrow:  moveFocus(-1, in: decision)
         case .rightArrow: moveFocus(1, in: decision)
@@ -183,9 +183,14 @@ struct GroupCompareView: View {
         }
     }
 
+    /// F — 즐겨찾기로 바꾸면 그 사진은 자동으로 "유지"가 된다 (즐겨찾기한 사진이 ⏎에 휴지통으로 가지 않게).
+    /// 두 변경이 같은 이벤트라 ⌘Z 한 번에 함께 되돌아간다.
     private func favoriteFocused(_ decision: GroupDecision) {
         guard decision.assets.indices.contains(focusedIndex) else { return }
-        appState.toggleFavorite(decision.assets[focusedIndex].localIdentifier)
+        let asset = decision.assets[focusedIndex]
+        let willFavorite = !appState.isFavorite(asset.localIdentifier)
+        appState.toggleFavorite(asset.localIdentifier)
+        if willFavorite { session.setKeep(asset, keep: true, undoManager: undoManager) }
     }
 
     /// 카드 격자.
@@ -223,6 +228,9 @@ struct GroupCompareView: View {
         }
     }
 
+    /// 다른 화면(리뷰 등)에서 이미 휴지통에 넣은 사진 — 카드에 표시해야 "유지"를 믿고 비우는 일이 없다
+    private var trashIDs: Set<String> { Set(photoManager.trashAssets.map(\.localIdentifier)) }
+
     private func card(_ asset: PHAsset, index: Int, in decision: GroupDecision, size: CGFloat) -> some View {
         ComparableThumbnail(
             asset: asset,
@@ -230,6 +238,7 @@ struct GroupCompareView: View {
             isRepresentative: decision.isRepresentative(asset),
             isKept: decision.isKept(asset),
             isFavorite: appState.isFavorite(asset.localIdentifier),
+            isInTrash: trashIDs.contains(asset.localIdentifier),
             onToggle: { focusedIndex = index; session.toggleKeep(asset, undoManager: undoManager) },
             onMakeRepresentative: { session.setRepresentative(asset, undoManager: undoManager) }
         )
@@ -348,17 +357,20 @@ private struct GroupActionBar: View {
 
             Spacer()
 
-            Button(action: onApplySelection) {
-                Text("선택대로 반영 (\(selectedDeleteCount)장)")
+            // 보조: 선택을 무시하고 대표 한 장만 남긴다
+            Button(action: onKeepRepresentative) {
+                Text("대표만 남기기 (\(deleteCount)장)")
                     .fontWeight(.medium)
                     .padding(.horizontal, 18).padding(.vertical, 10)
                     .background(RoundedRectangle(cornerRadius: 10).stroke(AppTheme.gracefulGold, lineWidth: 1.5))
+                    .contentShape(RoundedRectangle(cornerRadius: 10))
                     .foregroundStyle(AppTheme.gracefulGold)
             }
             .buttonStyle(.plain)
 
-            Button(action: onKeepRepresentative) {
-                Text("⏎  대표만 남기고 \(deleteCount)장 정리")
+            // 기본(⏎): 화면에 보이는 선택 그대로 — "삭제 예정"만 휴지통으로
+            Button(action: onApplySelection) {
+                Text("⏎  정리 (\(selectedDeleteCount)장)")
                     .fontWeight(.semibold)
                     .padding(.horizontal, 20).padding(.vertical, 10)
                     .background(RoundedRectangle(cornerRadius: 10).fill(AppTheme.gracefulGold))
