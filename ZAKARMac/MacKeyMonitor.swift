@@ -87,4 +87,9 @@ extension NSEvent.ModifierFlags {
     var zakarIsCommandOnly: Bool {
         contains(.command) && !contains(.option) && !contains(.control)
     }
+
+    /// ⌘·⌥ 없이 ⌃만 눌린 조합인지 (⌃Z = ⌘Z와 같은 되돌리기)
+    var zakarIsControlOnly: Bool {
+        contains(.control) && !contains(.command) && !contains(.option)
+    }
 }

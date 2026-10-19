@@ -91,6 +91,20 @@ final class GroupCompareSession: ObservableObject {
         replaceDecision(at: currentIndex, with: d, actionName: "유지·삭제 전환", undoManager: undoManager)
     }
 
+    /// ↑ 삭제 예정 / ↓ 유지로 **지정**한다 (⌫는 전환). 이미 그 상태면 아무것도 하지 않는다.
+    /// 대표는 삭제 예정이 될 수 없으므로 false — 뷰가 안내를 띄운다.
+    @discardableResult
+    func setKeep(_ asset: PHAsset, keep: Bool, undoManager: UndoManager? = nil) -> Bool {
+        guard var d = current else { return false }
+        let id = asset.localIdentifier
+        if id == d.representative.localIdentifier { return keep }   // 대표는 언제나 유지
+        guard d.keepSet.contains(id) != keep else { return true }
+        if keep { d.keepSet.insert(id) } else { d.keepSet.remove(id) }
+        replaceDecision(at: currentIndex, with: d, actionName: keep ? "유지 표시" : "삭제 예정 표시",
+                        undoManager: undoManager)
+        return true
+    }
+
     /// 대표 교체 (교체 대상은 자동으로 유지 집합에 포함)
     func setRepresentative(_ asset: PHAsset, undoManager: UndoManager? = nil) {
         guard var d = current else { return }

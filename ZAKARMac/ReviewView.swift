@@ -5,7 +5,8 @@ import AppKit
 // ============================================================
 // ReviewView — 리뷰 (키보드 대량 선별). "모든 사진" 안의 한 장씩 보기.
 // 대형 프리뷰(2단계 로드+프리페치) + 필름스트립 + 첫 실행 단축키 안내.
-// 키: ⌫ 삭제 · F 즐겨찾기 · ⌘1~9 앨범 · ←→ 이동 · Space 확대 · Esc 모든 사진으로.
+// 키: ↑·⌫ 휴지통 · ↓ 휴지통에서 살리기 · F 즐겨찾기 · ⌘1~9 앨범 · ←→ 이동 · Space 확대 · Esc 모든 사진으로.
+// 위 = 버림, 아래 = 살림 — 방향키만으로 정리할 수 있게 (유사 그룹도 같은 뜻).
 // 들어가기: 격자 더블클릭·⏎·리뷰 시작 버튼 (MacAppState.startReview)
 // ============================================================
 
@@ -89,8 +90,16 @@ struct ReviewView: View {
                     .font(.caption.weight(.medium))
                     .foregroundStyle(AppTheme.gracefulGold)
             }
+            if let asset = session.current, isInTrash(asset) {
+                // ←로 돌아왔을 때 ↓로 살릴 수 있는 사진인지 바로 알 수 있게
+                Label("휴지통에 있음 · ↓ 살리기", systemImage: "trash.fill")
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(Capsule().fill(Color.red.opacity(0.18)))
+                    .foregroundStyle(Color.red.opacity(0.95))
+            }
             Spacer()
-            Text("⌫ 삭제 · F 즐겨찾기 · ⌘1~9 앨범 · ←→ 이동 · Space 확대 · Esc 돌아가기")
+            Text("↑ 휴지통 · ↓ 살리기 · ←→ 이동 · F 즐겨찾기 · ⌘1~9 앨범 · Space 확대 · ⌘Z 되돌리기 · Esc 돌아가기")
                 .font(.caption)
                 .foregroundStyle(AppTheme.subText.opacity(0.7))
         }
@@ -167,7 +176,14 @@ struct ReviewView: View {
         }
         guard mods.zakarIsPlainKey else { return false }
         switch key {
-        case .delete:     session.deleteCurrent(reduceMotion: reduceMotion, undoManager: undoManager)
+        case .upArrow, .delete:
+            session.deleteCurrent(reduceMotion: reduceMotion, undoManager: undoManager)
+        case .downArrow:
+            if session.restoreCurrent(undoManager: undoManager) {
+                appState.showToast("휴지통에서 살렸습니다")
+            } else {
+                appState.showToast("휴지통에 없는 사진입니다")
+            }
         case .leftArrow:  session.back()
         case .rightArrow: session.advance()
         case .letterF:    session.toggleFavoriteCurrent(undoManager: undoManager)
@@ -178,6 +194,10 @@ struct ReviewView: View {
         default: return false
         }
         return true
+    }
+
+    private func isInTrash(_ asset: PHAsset) -> Bool {
+        photoManager.trashAssets.contains { $0.localIdentifier == asset.localIdentifier }
     }
 
     /// 다음 3장 원본 프리페치
@@ -262,9 +282,10 @@ private struct FilmstripView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
+                let trashIDs = Set(photoManager.trashAssets.map(\.localIdentifier))
                 LazyHStack(spacing: 6) {
                     ForEach(Array(photoManager.allPhotos.enumerated()), id: \.element.localIdentifier) { i, asset in
-                        cellView(asset: asset, index: i)
+                        cellView(asset: asset, index: i, inTrash: trashIDs.contains(asset.localIdentifier))
                             .id(i)
                             .onTapGesture { session.jump(to: i) }
                     }
@@ -280,7 +301,8 @@ private struct FilmstripView: View {
         }
     }
 
-    private func cellView(asset: PHAsset, index: Int) -> some View {
+    /// 휴지통 표시는 세션 기록이 아니라 실제 휴지통 기준 — ↓로 살리면 바로 사라지고, 지난번에 버린 사진도 보인다
+    private func cellView(asset: PHAsset, index: Int, inTrash: Bool) -> some View {
         let isCurrent = index == session.currentIndex
         return MacAssetThumbnail(asset: asset, size: cell)
             .clipShape(RoundedRectangle(cornerRadius: 6))
@@ -289,18 +311,27 @@ private struct FilmstripView: View {
                     .strokeBorder(isCurrent ? AppTheme.gracefulGold : Color.white.opacity(0.1),
                                   lineWidth: isCurrent ? 3 : 1)
             }
-            .overlay(alignment: .topTrailing) { statusIcon(asset) }
-            .opacity(session.history[asset.localIdentifier] == .deleted ? 0.4 : 1)
+            .overlay(alignment: .topTrailing) { statusIcon(asset, inTrash: inTrash) }
+            .opacity(inTrash ? 0.4 : 1)
             .draggable(asset.localIdentifier)   // 앨범/휴지통으로 드래그
     }
 
     /// 즐겨찾기는 세션 이력이 아니라 **실제 라이브러리 상태**를 본다.
     /// 이력만 보면 지난 세션에 즐겨찾기한 사진에는 하트가 안 뜬다.
     @ViewBuilder
-    private func statusIcon(_ asset: PHAsset) -> some View {
+    private func statusIcon(_ asset: PHAsset, inTrash: Bool) -> some View {
+        if inTrash {
+            icon("trash.fill", .red)
+        } else {
+            nonTrashIcon(asset)
+        }
+    }
+
+    @ViewBuilder
+    private func nonTrashIcon(_ asset: PHAsset) -> some View {
         switch session.history[asset.localIdentifier] {
         case .deleted:
-            icon("trash.fill", .red)
+            EmptyView()   // 기록은 삭제지만 휴지통에 없음 = 살렸거나 휴지통에서 복원함
         case .moved:
             icon("folder.fill", AppTheme.lavender)
         case .favorited, .none:
@@ -327,11 +358,13 @@ private struct KeyGuideOverlay: View {
     @FocusState private var focused: Bool
 
     private let rows: [(String, String)] = [
-        ("⌫", "휴지통으로 이동"),
+        ("↑  또는  ⌫", "휴지통으로 이동"),
+        ("↓", "휴지통에서 살리기"),
         ("F", "즐겨찾기 토글"),
         ("⌘1 ~ ⌘9", "지정 앨범으로 이동"),
         ("← →", "이전 / 다음 사진"),
         ("Space", "크게 보기"),
+        ("⌘Z", "되돌리기 (⇧ 함께 = 다시 실행)"),
         ("Esc", "모든 사진으로 돌아가기"),
     ]
 

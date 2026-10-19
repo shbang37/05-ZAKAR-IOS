@@ -147,8 +147,9 @@ final class MacAppState: ObservableObject {
 
     private func dispatchKey(_ key: MacKey, _ mods: NSEvent.ModifierFlags) -> Bool {
         guard showNewAlbum == false else { return false }   // 시트가 떠 있으면 시트가 우선
-        // ⌘Z/⌘⇧Z는 어느 화면에서든 여기서 처리 — 메뉴 단축키는 문자 기반이라 한글 입력기에서 흔들린다
-        if key == .letterZ, mods.zakarIsCommandOnly {
+        // ⌘Z/⌘⇧Z는 어느 화면에서든 여기서 처리 — 메뉴 단축키는 문자 기반이라 한글 입력기에서 흔들린다.
+        // ⌃Z도 같은 뜻으로 받는다 (Windows 습관으로 컨트롤을 누르는 사용자)
+        if key == .letterZ, mods.zakarIsCommandOnly || mods.zakarIsControlOnly {
             mods.contains(.shift) ? performRedo() : performUndo()
             return true
         }

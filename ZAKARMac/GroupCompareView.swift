@@ -4,7 +4,8 @@ import Photos
 // ============================================================
 // GroupCompareView — 그룹 비교 모드 (차별화 기능)
 // 헤더(진행률) + 사진 카드(≤5장 1행, 초과 시 격자) + 액션 바.
-// 키보드: ⏎ 정리 · R 대표 지정 · S 건너뛰기 · A 이전 그룹 · ←→ 포커스 · ⌫ 삭제 토글 · F 즐겨찾기 · Space 확대.
+// 키보드: ⏎ 정리 · R 대표 지정 · S 건너뛰기 · A 이전 그룹 · ←→ 포커스 · ↑ 삭제 예정 · ↓ 유지 · ⌫ 삭제 토글 · F 즐겨찾기 · Space 확대.
+// ↑ = 버림, ↓ = 살림은 리뷰와 같은 뜻 (여기선 표시만 바뀌고 실제 휴지통 등록은 ⏎).
 // ⌘Z는 MacAppState가 앱 전체에서 처리한다 (이 화면의 모든 동작이 되돌리기 대상).
 // ============================================================
 
@@ -138,6 +139,8 @@ struct GroupCompareView: View {
         case .leftArrow:  moveFocus(-1, in: decision)
         case .rightArrow: moveFocus(1, in: decision)
         case .delete:     toggleFocusedDelete(decision)
+        case .upArrow:    markFocused(keep: false, in: decision)
+        case .downArrow:  markFocused(keep: true, in: decision)
         case .letterS:    session.skipCurrent(undoManager: undoManager)
         case .letterA:    session.goBack()
         case .letterR:    makeFocusedRepresentative(decision)
@@ -170,6 +173,14 @@ struct GroupCompareView: View {
     private func toggleFocusedDelete(_ decision: GroupDecision) {
         guard decision.assets.indices.contains(focusedIndex) else { return }
         session.toggleKeep(decision.assets[focusedIndex], undoManager: undoManager)
+    }
+
+    /// ↑ 삭제 예정 / ↓ 유지
+    private func markFocused(keep: Bool, in decision: GroupDecision) {
+        guard decision.assets.indices.contains(focusedIndex) else { return }
+        if !session.setKeep(decision.assets[focusedIndex], keep: keep, undoManager: undoManager) {
+            appState.showToast("대표 사진은 삭제할 수 없어요 — R로 다른 사진을 대표로 정하세요")
+        }
     }
 
     private func favoriteFocused(_ decision: GroupDecision) {
@@ -286,7 +297,7 @@ private struct GroupProgressHeader: View {
                         .background(Capsule().fill(AppTheme.gracefulGold.opacity(0.2)))
                         .foregroundStyle(AppTheme.gracefulGold)
                 }
-                Text("⏎ 정리 · R 대표 지정 · ⌫ 삭제 토글 · F 즐겨찾기 · ←→ 이동 · Space 확대 · A 이전 · S 건너뛰기 · ⌘Z 되돌리기")
+                Text("⏎ 정리 · ↑ 삭제 예정 · ↓ 유지 · ←→ 이동 · R 대표 지정 · F 즐겨찾기 · Space 확대 · A 이전 · S 건너뛰기 · ⌘Z 되돌리기")
                     .font(.caption)
                     .foregroundStyle(AppTheme.subText.opacity(0.7))
                 Spacer()

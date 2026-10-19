@@ -6,7 +6,7 @@ import Combine
 // ============================================================
 // 리뷰 모드 상태 모델
 // allPhotos를 1장씩 대량 선별. 처리 이력(history)은 필름스트립 오버레이용.
-// 삭제/앨범이동은 자동 다음 진행, 즐겨찾기는 제자리 토글.
+// 삭제(↑·⌫)/앨범이동은 자동 다음 진행, 즐겨찾기·살리기(↓)는 제자리.
 // ============================================================
 
 enum ReviewAction: Equatable {
@@ -79,6 +79,43 @@ final class ReviewSession: ObservableObject {
             s.deleteCurrent(reduceMotion: true, undoManager: undoManager)
         }
         undoManager?.setActionName("삭제")
+    }
+
+    /// ↓ — 지금 보는 사진이 휴지통에 있으면 꺼낸다. 휴지통에 없으면 false (뷰가 안내를 띄운다).
+    /// 이번 세션 기록(history)이 아니라 **실제 휴지통**을 본다 — 지난번에 버린 사진도 살릴 수 있게.
+    @discardableResult
+    func restoreCurrent(undoManager: UndoManager? = nil) -> Bool {
+        guard let pm = photoManager, let asset = current else { return false }
+        let id = asset.localIdentifier
+        guard let trashIndex = pm.trashAssets.firstIndex(where: { $0.localIdentifier == id }) else { return false }
+        pm.trashAssets.remove(at: trashIndex)
+        pm.saveTrash()
+        let previous = history[id]
+        history[id] = nil
+        let index = currentIndex
+        undoManager?.registerUndo(withTarget: self) { s in
+            s.undoRestore(asset, trashIndex: trashIndex, previous: previous, index: index, undoManager: undoManager)
+        }
+        undoManager?.setActionName("휴지통에서 살리기")
+        return true
+    }
+
+    /// 살리기 취소 — 휴지통의 원래 자리로 되돌리고 그 사진으로 돌아간다
+    private func undoRestore(_ asset: PHAsset, trashIndex: Int, previous: ReviewAction?,
+                             index: Int, undoManager: UndoManager?) {
+        guard let pm = photoManager else { return }
+        let id = asset.localIdentifier
+        if !pm.trashAssets.contains(where: { $0.localIdentifier == id }) {
+            pm.trashAssets.insert(asset, at: min(trashIndex, pm.trashAssets.count))
+            pm.saveTrash()
+        }
+        history[id] = previous ?? .deleted
+        jump(to: index)
+        undoManager?.registerUndo(withTarget: self) { s in
+            s.jump(to: index)
+            s.restoreCurrent(undoManager: undoManager)
+        }
+        undoManager?.setActionName("휴지통에서 살리기")
     }
 
     func toggleFavoriteCurrent(undoManager: UndoManager? = nil) {
