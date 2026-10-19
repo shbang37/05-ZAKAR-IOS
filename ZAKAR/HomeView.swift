@@ -53,8 +53,8 @@ struct HomeView: View {
                 // 3. 메타데이터 로드
                 metadata = LocalDB.shared.loadMetadata()
                 
-                // 4. 휴지통 동기화: PhotoManager 공유 상태 갱신
-                photoManager.loadTrash()
+                // 4. 휴지통 동기화: @MainActor 보장하며 호출
+                Task { @MainActor in photoManager.loadTrash() }
             }
         }
         .preferredColorScheme(.dark)
@@ -116,7 +116,7 @@ struct HomeView: View {
                 )
             }
 
-            NavigationLink(destination: ContentView(initialTab: 0).id(UUID())) {
+            NavigationLink(destination: ContentView(initialTab: 0)) {
                 GlassSectionCard(
                     title: "유사 사진",
                     subtitle: "비슷한 사진들을 모아서 빠르게 확인",
@@ -214,10 +214,13 @@ private struct RecentPhotoCard: View {
             }
         }
         .fullScreenCover(isPresented: $showCleanUpView) {
+            // 열리는 시점의 allPhotos 스냅샷 사용 (인덱스 불일치 방지)
+            let snapshot = photoManager.allPhotos
             if let photo = recentPhoto,
-               let index = photoManager.allPhotos.firstIndex(of: photo) {
+               !snapshot.isEmpty,
+               let index = snapshot.firstIndex(of: photo) {
                 CleanUpView(
-                    photos: photoManager.allPhotos,
+                    photos: snapshot,
                     startIndex: index,
                     isPresented: $showCleanUpView,
                     trashAlbum: Binding(
@@ -226,6 +229,9 @@ private struct RecentPhotoCard: View {
                     ),
                     photoManager: photoManager
                 )
+            } else {
+                // 사진 데이터 없을 때 안전하게 닫기
+                Color.clear.onAppear { showCleanUpView = false }
             }
         }
         // 임시 휴지통 시트: CleanUpView의 휴지통 버튼에서 OpenTrash 알림 수신 시 표시
@@ -237,7 +243,7 @@ private struct RecentPhotoCard: View {
                 ),
                 photoManager: photoManager
             ) {
-                photoManager.fetchPhotos()
+                photoManager.fetchPhotos(force: true)
             }
         }
         // CleanUpView에서 보낸 OpenTrash 신호 수신
@@ -377,7 +383,7 @@ private struct GlassSectionCard: View {
 
 // MARK: - 월별 데이터 모델
 struct MonthData: Identifiable {
-    let id = UUID()
+    var id: String { "\(year)-\(month)" }
     let year: Int
     let month: Int
     let photoCount: Int
