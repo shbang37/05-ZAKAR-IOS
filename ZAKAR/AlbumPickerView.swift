@@ -2,6 +2,8 @@ import SwiftUI
 import Photos
 
 struct AlbumPickerView: View {
+    let destination: ArchiveView.UploadDestination
+
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var photoManager: PhotoManager
     @EnvironmentObject private var googleDrive: GoogleDriveService
@@ -400,30 +402,39 @@ struct AlbumPickerView: View {
         assets.enumerateObjects { asset, _, _ in
             assetArray.append(asset)
         }
-        
         guard !assetArray.isEmpty else { return }
-        
-        // Google Drive에 업로드 (진행상황은 ArchiveView에서 표시)
-        let department = auth.currentUser?.department ?? "미분류"
-        print("[AlbumPicker] Current user: \(String(describing: auth.currentUser))")
-        print("[AlbumPicker] Department: '\(department)', eventName: '\(eventName)'")
-        
-        // 업로드 시작 (백그라운드에서 실행)
-        Task {
-            do {
-                try await googleDrive.uploadAssets(
-                    assetArray,
-                    department: department,
-                    eventName: eventName
-                )
-            } catch {
-                print("[AlbumPicker] Upload failed: \(error)")
+
+        switch destination {
+        case .aws(let awsService, let department, let userId):
+            // ── AWS S3 업로드 ─────────────────────────────────────
+            print("[AlbumPicker→AWS] dept=\(department), event=\(eventName)")
+            selectedAlbum = nil
+            dismiss()
+            await awsService.enqueueAndUpload(
+                assets:     assetArray,
+                department: department,
+                eventName:  eventName.isEmpty ? "general" : eventName,
+                userId:     userId
+            )
+
+        case .googleDrive:
+            // ── Google Drive 업로드 ───────────────────────────────
+            let department = auth.currentUser?.department ?? "미분류"
+            print("[AlbumPicker→GDrive] dept=\(department), event=\(eventName)")
+            Task {
+                do {
+                    try await googleDrive.uploadAssets(
+                        assetArray,
+                        department: department,
+                        eventName: eventName
+                    )
+                } catch {
+                    print("[AlbumPicker→GDrive] Upload failed: \(error)")
+                }
             }
+            selectedAlbum = nil
+            dismiss()
         }
-        
-        // 즉시 화면 닫기 (업로드는 백그라운드에서 계속)
-        selectedAlbum = nil
-        dismiss()
     }
 }
 

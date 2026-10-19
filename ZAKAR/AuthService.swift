@@ -59,6 +59,9 @@ final class AuthService: ObservableObject {
     }
 
     // MARK: - 부서 목록 조회 (Firestore REST — 로그인 전 접근 가능하도록 공개 규칙 필요)
+    /// Firestore `departments` 컬렉션에서 부서 목록을 가져옵니다.
+    /// 문서에 `key` 필드가 있으면 AWSService 동적 맵에 반영하여
+    /// ZAKARAdmin에서 추가/수정된 부서가 자동으로 S3 경로에 사용됩니다.
     func fetchDepartments() async -> [String] {
         guard let url = Bundle.main.url(forResource: "GoogleService-Info", withExtension: "plist"),
               let dict = NSDictionary(contentsOf: url) as? [String: Any],
@@ -72,10 +75,31 @@ final class AuthService: ObservableObject {
             let (data, _) = try await URLSession.shared.data(from: reqURL)
             guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let docs = json["documents"] as? [[String: Any]] else { return [] }
-            return docs.compactMap { doc -> String? in
+
+            var newKeyMap:     [String: String] = [:]  // 한글명 → S3 키
+            var newDisplayMap: [String: String] = [:]  // S3 키  → 한글명
+
+            let names: [String] = docs.compactMap { doc -> String? in
                 guard let fields = doc["fields"] as? [String: Any] else { return nil }
-                return (fields["name"] as? [String: Any])?["stringValue"] as? String
+                let name = (fields["name"] as? [String: Any])?["stringValue"] as? String
+                let key  = (fields["key"]  as? [String: Any])?["stringValue"] as? String
+
+                // key 필드가 있으면 동적 맵에 등록 (ZAKARAdmin에서 관리)
+                if let n = name, let k = key, !k.isEmpty {
+                    newKeyMap[n] = k
+                    newDisplayMap[k] = n
+                }
+                return name
             }.sorted()
+
+            // Firestore에서 읽은 매핑으로 AWSService 동적 맵 갱신
+            if !newKeyMap.isEmpty {
+                AWSService.dynamicKeyMap     = newKeyMap
+                AWSService.dynamicDisplayMap = newDisplayMap
+                print("✅ [AuthService] 부서 동적 매핑 업데이트: \(newKeyMap)")
+            }
+
+            return names
         } catch {
             return []
         }

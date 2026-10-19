@@ -69,6 +69,9 @@ struct RootView: View {
                     .task {
                         print("🟢 ZAKAR Log: RootView.task - starting initialization")
                         auth.checkCurrentSession()
+                        // 부서 매핑을 Firestore에서 동적 로드 (백그라운드, 비차단)
+                        // ZAKARAdmin에서 부서를 추가/수정/삭제하면 앱 재시작 시 자동 반영
+                        Task { let _ = await auth.fetchDepartments() }
                         try? await Task.sleep(nanoseconds: 500_000_000)
                         withAnimation {
                             initializationComplete = true

@@ -185,11 +185,11 @@ struct LoginView: View {
         .task(id: mode) {
             if mode == .signUp && departments.isEmpty {
                 departments = await auth.fetchDepartments()
-                // Firestore에 부서가 없으면 기본값 사용
-                if departments.isEmpty {
-                    departments = ["송도청", "또래청", "미들청", "열린청", "송도엘피스", "중고등부"]
+                // Firestore에서 부서를 가져오지 못한 경우 → 빈 상태 유지 (하드코딩 제거)
+                // Firestore 보안 규칙에서 departments 컬렉션의 공개 읽기를 허용해야 함
+                if !departments.isEmpty {
+                    selectedDepartment = departments[0]
                 }
-                if selectedDepartment.isEmpty { selectedDepartment = departments[0] }
             }
         }
     }
@@ -202,19 +202,32 @@ struct LoginView: View {
                 .foregroundColor(.white.opacity(0.4))
                 .frame(width: 20)
 
-            Menu {
-                ForEach(departments, id: \.self) { dept in
-                    Button(dept) { selectedDepartment = dept }
-                }
-            } label: {
+            if departments.isEmpty {
+                // Firestore에서 부서를 불러오지 못한 경우
                 HStack {
-                    Text(selectedDepartment.isEmpty ? "부서 선택" : selectedDepartment)
+                    ProgressView()
+                        .scaleEffect(0.7)
+                        .tint(.white.opacity(0.5))
+                    Text("부서 목록 불러오는 중...")
                         .font(.system(size: 15))
-                        .foregroundColor(selectedDepartment.isEmpty ? .white.opacity(0.35) : .white)
+                        .foregroundColor(.white.opacity(0.35))
                     Spacer()
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.4))
+                }
+            } else {
+                Menu {
+                    ForEach(departments, id: \.self) { dept in
+                        Button(dept) { selectedDepartment = dept }
+                    }
+                } label: {
+                    HStack {
+                        Text(selectedDepartment.isEmpty ? "부서 선택" : selectedDepartment)
+                            .font(.system(size: 15))
+                            .foregroundColor(selectedDepartment.isEmpty ? .white.opacity(0.35) : .white)
+                        Spacer()
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.4))
+                    }
                 }
             }
         }

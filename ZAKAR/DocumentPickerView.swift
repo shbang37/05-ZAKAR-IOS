@@ -3,6 +3,8 @@ import UniformTypeIdentifiers
 
 // MARK: - 문서 선택 뷰
 struct DocumentPickerView: View {
+    let destination: ArchiveView.UploadDestination
+
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var googleDrive: GoogleDriveService
     @EnvironmentObject private var auth: AuthService
@@ -319,37 +321,36 @@ struct DocumentPickerView: View {
     
     private func startUpload() async {
         guard !selectedURLs.isEmpty else { return }
-        
+
         showUploadConfirmation = false
-        
-        let department = auth.currentUser?.department ?? "미분류"
         let urlsToUpload = selectedURLs
-        
-        print("[DocumentPicker] Upload \(urlsToUpload.count) documents")
-        print("[DocumentPicker] Department: '\(department)', eventName: '\(eventName)'")
-        
-        // 업로드 시작 (백그라운드에서 실행)
-        Task {
-            do {
-                // URL 기반 파일 업로드 (문서, 영상 등)
-                try await googleDrive.uploadFiles(
-                    urlsToUpload,
-                    department: department,
-                    eventName: eventName
-                ) { completed, total in
-                    print("[DocumentPicker] Upload progress: \(completed)/\(total)")
-                }
-            } catch {
-                print("[DocumentPicker] Upload failed: \(error)")
-                await MainActor.run {
-                    // 에러 알림 표시 (나중에 추가 가능)
+
+        switch destination {
+        case .aws:
+            // AWS 문서 업로드는 추후 지원 예정 — 현재는 Google Drive로 fallback
+            // (AWSService에 enqueueAndUploadFiles(urls:) 추가 후 전환)
+            print("[DocumentPicker→AWS] 문서 AWS 업로드 미지원 — GDrive fallback")
+            fallthrough
+
+        case .googleDrive:
+            let department = auth.currentUser?.department ?? "미분류"
+            print("[DocumentPicker→GDrive] dept=\(department), event=\(eventName), files=\(urlsToUpload.count)")
+            Task {
+                do {
+                    try await googleDrive.uploadFiles(
+                        urlsToUpload,
+                        department: department,
+                        eventName: eventName
+                    ) { completed, total in
+                        print("[DocumentPicker→GDrive] \(completed)/\(total)")
+                    }
+                } catch {
+                    print("[DocumentPicker→GDrive] Upload failed: \(error)")
                 }
             }
+            selectedURLs.removeAll()
+            dismiss()
         }
-        
-        // 즉시 화면 닫기 (업로드는 백그라운드에서 계속 진행)
-        selectedURLs.removeAll()
-        dismiss()
     }
 }
 

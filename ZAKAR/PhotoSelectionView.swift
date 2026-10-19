@@ -2,6 +2,8 @@ import SwiftUI
 import Photos
 
 struct PhotoSelectionView: View {
+    let destination: ArchiveView.UploadDestination
+
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var photoManager: PhotoManager
     @EnvironmentObject private var googleDrive: GoogleDriveService
@@ -15,9 +17,12 @@ struct PhotoSelectionView: View {
     @State private var currentUploadIndex = 0
     @State private var isLoadingPhotos = false
     
-    private let columns = [
-        GridItem(.adaptive(minimum: 100, maximum: 120), spacing: 2)
-    ]
+    // 3열 고정 그리드 (간격 3pt)
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 3), count: 3)
+    // 셀 크기: 화면 너비에서 좌우 패딩(3*2) + 셀 간격(3*2) 제외 후 3등분
+    private var cellSize: CGFloat {
+        (UIScreen.main.bounds.width - 3 * 2 - 3 * 2) / 3
+    }
     
     var body: some View {
         NavigationView {
@@ -132,18 +137,20 @@ struct PhotoSelectionView: View {
     // MARK: - 사진 그리드
     private var photoGridSection: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 2) {
+            LazyVGrid(columns: columns, spacing: 3) {
                 ForEach(photoManager.allPhotos, id: \.localIdentifier) { asset in
                     photoCell(asset: asset)
                 }
             }
-            .padding(2)
+            .padding(.horizontal, 3)
+            .padding(.top, 3)
         }
     }
-    
+
     private func photoCell(asset: PHAsset) -> some View {
         let isSelected = selectedAssets.contains(asset)
-        
+        let size = cellSize
+
         return Button {
             if isSelected {
                 selectedAssets.remove(asset)
@@ -152,37 +159,39 @@ struct PhotoSelectionView: View {
             }
         } label: {
             ZStack(alignment: .topTrailing) {
-                // 사진 썸네일
+                // 썸네일: 정사각형 고정 프레임
                 AsyncImage(asset: asset)
-                    .aspectRatio(1, contentMode: .fill)
+                    .frame(width: size, height: size)
                     .clipped()
-                
-                // 선택 오버레이
+
+                // 선택 시 골든 오버레이
                 if isSelected {
-                    AppTheme.gracefulGold.opacity(0.3)
-                    
-                    // 체크마크
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 24))
-                        .foregroundColor(AppTheme.gracefulGold)
-                        .background(
-                            Circle()
-                                .fill(Color.white)
-                                .frame(width: 20, height: 20)
-                        )
-                        .padding(6)
+                    AppTheme.gracefulGold.opacity(0.25)
+                        .frame(width: size, height: size)
                 }
-                
-                // 선택 안 된 상태 원형 테두리
-                if !isSelected {
-                    Circle()
-                        .strokeBorder(Color.white.opacity(0.6), lineWidth: 2)
-                        .frame(width: 24, height: 24)
-                        .padding(6)
+
+                // 체크마크 / 미선택 원형 테두리
+                ZStack {
+                    if isSelected {
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 20, height: 20)
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 22))
+                            .foregroundColor(AppTheme.gracefulGold)
+                    } else {
+                        Circle()
+                            .strokeBorder(Color.white.opacity(0.75), lineWidth: 1.5)
+                            .frame(width: 22, height: 22)
+                    }
                 }
+                .padding(7)
             }
+            .frame(width: size, height: size)
+            // 두 번째 스크린샷과 동일한 라운드 코너
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
-        .clipShape(Rectangle())
+        .buttonStyle(.plain)
     }
     
     // MARK: - 빈 상태
@@ -419,29 +428,40 @@ struct PhotoSelectionView: View {
     
     private func startUpload() async {
         guard !selectedAssets.isEmpty else { return }
-        
+
         showUploadConfirmation = false
-        
         let assetArray = Array(selectedAssets)
-        let department = auth.currentUser?.department ?? "미분류"
-        print("[PhotoSelection] Current user: \(String(describing: auth.currentUser))")
-        print("[PhotoSelection] Department: '\(department)', eventName: '\(eventName)'")
-        
-        // 업로드 시작 (백그라운드에서 실행)
-        Task {
-            do {
-                try await googleDrive.uploadAssets(
-                    assetArray,
-                    department: department,
-                    eventName: eventName
-                )
-            } catch {
-                print("[PhotoSelection] Upload failed: \(error)")
+
+        switch destination {
+        case .aws(let awsService, let department, let userId):
+            // ── AWS S3 업로드 ─────────────────────────────────────
+            print("[PhotoSelection→AWS] dept=\(department), event=\(eventName)")
+            selectedAssets.removeAll()
+            dismiss()
+            await awsService.enqueueAndUpload(
+                assets:     assetArray,
+                department: department,
+                eventName:  eventName.isEmpty ? "general" : eventName,
+                userId:     userId
+            )
+
+        case .googleDrive:
+            // ── Google Drive 업로드 ───────────────────────────────
+            let department = auth.currentUser?.department ?? "미분류"
+            print("[PhotoSelection→GDrive] dept=\(department), event=\(eventName)")
+            Task {
+                do {
+                    try await googleDrive.uploadAssets(
+                        assetArray,
+                        department: department,
+                        eventName: eventName
+                    )
+                } catch {
+                    print("[PhotoSelection→GDrive] Upload failed: \(error)")
+                }
             }
+            selectedAssets.removeAll()
+            dismiss()
         }
-        
-        // 즉시 화면 닫기 (업로드는 백그라운드에서 계속)
-        selectedAssets.removeAll()
-        dismiss()
     }
 }

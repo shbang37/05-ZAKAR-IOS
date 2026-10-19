@@ -4,6 +4,8 @@ import PhotosUI
 
 // MARK: - 영상 선택 뷰
 struct VideoPickerView: View {
+    let destination: ArchiveView.UploadDestination
+
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var photoManager: PhotoManager
     @EnvironmentObject private var googleDrive: GoogleDriveService
@@ -393,37 +395,43 @@ struct VideoPickerView: View {
     
     private func startUpload() async {
         guard !selectedAssets.isEmpty else { return }
-        
+
         showUploadConfirmation = false
-        
         let assetArray = Array(selectedAssets)
-        let department = auth.currentUser?.department ?? "미분류"
-        
-        print("[VideoPicker] Current user: \(String(describing: auth.currentUser))")
-        print("[VideoPicker] Department: '\(department)', eventName: '\(eventName)'")
-        
-        // 업로드 시작 (백그라운드에서 실행)
-        Task {
-            do {
-                // PHAsset 기반 업로드 (영상도 PHAsset으로 처리)
-                try await googleDrive.uploadAssets(
-                    assetArray,
-                    department: department,
-                    eventName: eventName
-                ) { completed, total in
-                    print("[VideoPicker] Upload progress: \(completed)/\(total)")
-                }
-            } catch {
-                print("[VideoPicker] Upload failed: \(error)")
-                await MainActor.run {
-                    // 에러 알림 표시 (나중에 추가 가능)
+
+        switch destination {
+        case .aws(let awsService, let department, let userId):
+            // ── AWS S3 업로드 ─────────────────────────────────────
+            print("[VideoPicker→AWS] dept=\(department), event=\(eventName)")
+            selectedAssets.removeAll()
+            dismiss()
+            await awsService.enqueueAndUpload(
+                assets:     assetArray,
+                department: department,
+                eventName:  eventName.isEmpty ? "general" : eventName,
+                userId:     userId
+            )
+
+        case .googleDrive:
+            // ── Google Drive 업로드 ───────────────────────────────
+            let department = auth.currentUser?.department ?? "미분류"
+            print("[VideoPicker→GDrive] dept=\(department), event=\(eventName)")
+            Task {
+                do {
+                    try await googleDrive.uploadAssets(
+                        assetArray,
+                        department: department,
+                        eventName: eventName
+                    ) { completed, total in
+                        print("[VideoPicker→GDrive] \(completed)/\(total)")
+                    }
+                } catch {
+                    print("[VideoPicker→GDrive] Upload failed: \(error)")
                 }
             }
+            selectedAssets.removeAll()
+            dismiss()
         }
-        
-        // 즉시 화면 닫기 (업로드는 백그라운드에서 계속 진행)
-        selectedAssets.removeAll()
-        dismiss()
     }
 }
 
